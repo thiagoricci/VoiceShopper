@@ -111,6 +111,43 @@ export const GroceryApp: React.FC = () => {
       );
     });
     
+    // Fallback: If we only have one item and it contains multiple words,
+    // try space-based splitting for grocery items
+    if (parsedItems.length === 1 && parsedItems[0].split(' ').length > 1) {
+      const words = parsedItems[0].split(' ');
+      
+      // Common grocery items and compound words that should stay together
+      const compoundItems = [
+        'ice cream', 'olive oil', 'peanut butter', 'orange juice', 'apple juice',
+        'ground beef', 'chicken breast', 'hot dogs', 'potato chips', 'corn flakes',
+        'green beans', 'sweet potato', 'bell pepper', 'black beans', 'brown rice',
+        'whole wheat', 'greek yogurt', 'coconut milk', 'almond milk', 'soy sauce',
+        'maple syrup', 'baking soda', 'vanilla extract', 'cream cheese', 'cottage cheese'
+      ];
+      
+      // Try to identify compound items first
+      let processedWords = [...words];
+      const identifiedItems: string[] = [];
+      
+      // Check for compound items
+      for (let i = 0; i < processedWords.length - 1; i++) {
+        const twoWordPhrase = `${processedWords[i]} ${processedWords[i + 1]}`;
+        if (compoundItems.includes(twoWordPhrase)) {
+          identifiedItems.push(twoWordPhrase);
+          processedWords.splice(i, 2); // Remove both words
+          i--; // Adjust index
+        }
+      }
+      
+      // Add remaining single words as individual items
+      identifiedItems.push(...processedWords);
+      
+      // Only use space-based parsing if we get reasonable items
+      if (identifiedItems.length > 1 && identifiedItems.every(item => item.trim().length > 0)) {
+        parsedItems = identifiedItems;
+      }
+    }
+    
     // Clean up each item
     const cleanedItems = parsedItems
       .map(item => {
