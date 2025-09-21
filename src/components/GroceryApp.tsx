@@ -55,18 +55,101 @@ export const GroceryApp: React.FC = () => {
     },
   });
 
-  // Parse speech transcript and add items to list
+  // Enhanced parsing function for natural speech patterns
   const parseAndAddItems = useCallback((transcript: string) => {
-    // Split by common separators and clean up
-    const rawItems = transcript
-      .split(/(?:,|\sand\s|\sor\s|\salso\s|\snext\s)/i)
-      .map(item => item.trim())
-      .filter(item => item.length > 0);
-
-    const newItems: ShoppingItem[] = rawItems
-      .filter(item => !items.some(existing => 
-        existing.name.toLowerCase() === item.toLowerCase()
-      ))
+    // Normalize the transcript
+    let normalized = transcript.toLowerCase().trim();
+    
+    // Remove common filler words and phrases
+    const fillerWords = [
+      'i need', 'i want', 'get me', 'buy', 'purchase', 'pick up',
+      'we need', 'let me get', 'can you add', 'add to the list',
+      'put on the list', 'write down', 'remember to get'
+    ];
+    
+    fillerWords.forEach(filler => {
+      normalized = normalized.replace(new RegExp(`^${filler}\\s+`, 'i'), '');
+      normalized = normalized.replace(new RegExp(`\\s+${filler}\\s+`, 'gi'), ' ');
+    });
+    
+    // Enhanced separators for natural speech
+    const separators = [
+      // Conjunctions
+      /\s+and\s+/gi,
+      /\s+also\s+/gi,
+      /\s+plus\s+/gi,
+      /\s+as well as\s+/gi,
+      /\s+along with\s+/gi,
+      
+      // Sequential words
+      /\s+then\s+/gi,
+      /\s+next\s+/gi,
+      /\s+after that\s+/gi,
+      
+      // Quantity transitions
+      /\s+some\s+/gi,
+      /\s+a few\s+/gi,
+      /\s+couple of\s+/gi,
+      
+      // Punctuation
+      /,\s*/g,
+      /;\s*/g,
+      
+      // Numbers (when they start a new item)
+      /\s+(?=\d+\s+)/g,
+      
+      // Pauses in speech (multiple periods or spaces)
+      /\.{2,}/g,
+      /\s{3,}/g
+    ];
+    
+    // Apply all separators
+    let parsedItems = [normalized];
+    separators.forEach(separator => {
+      parsedItems = parsedItems.flatMap(item => 
+        item.split(separator).filter(part => part.trim().length > 0)
+      );
+    });
+    
+    // Clean up each item
+    const cleanedItems = parsedItems
+      .map(item => {
+        let cleaned = item.trim();
+        
+        // Remove leading articles and quantifiers
+        cleaned = cleaned.replace(/^(a|an|the|some|few|couple)\s+/i, '');
+        
+        // Remove trailing periods and commas
+        cleaned = cleaned.replace(/[.,]+$/, '');
+        
+        // Handle quantities - keep them if they're part of the item name
+        // But remove standalone numbers at the beginning
+        cleaned = cleaned.replace(/^\d+\s+(?=\w)/g, '');
+        
+        // Remove extra whitespace
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+        
+        return cleaned;
+      })
+      .filter(item => {
+        // Filter out empty items and common non-items
+        if (!item || item.length < 2) return false;
+        
+        const nonItems = [
+          'and', 'or', 'also', 'plus', 'then', 'next', 'um', 'uh',
+          'well', 'okay', 'alright', 'let me see', 'what else'
+        ];
+        
+        return !nonItems.includes(item.toLowerCase());
+      });
+    
+    // Convert to ShoppingItem objects, avoiding duplicates
+    const newItems: ShoppingItem[] = cleanedItems
+      .filter(itemName => 
+        !items.some(existing => 
+          existing.name.toLowerCase() === itemName.toLowerCase()
+        )
+      )
       .map(name => ({
         id: Math.random().toString(36).substr(2, 9),
         name: name.charAt(0).toUpperCase() + name.slice(1),
@@ -76,8 +159,14 @@ export const GroceryApp: React.FC = () => {
     if (newItems.length > 0) {
       setItems(prev => [...prev, ...newItems]);
       toast({
-        title: `Added ${newItems.length} item${newItems.length > 1 ? 's' : ''}`,
-        description: newItems.map(item => item.name).join(', '),
+        title: `Added ${newItems.length} item${newItems.length > 1 ? "s" : ""}`,
+        description: newItems.map(item => item.name).join(", "),
+      });
+    } else if (cleanedItems.length === 0) {
+      toast({
+        title: "No items recognized",
+        description: "Try speaking more clearly or use words like 'and' between items",
+        variant: "destructive",
       });
     }
   }, [items, toast]);
@@ -393,8 +482,9 @@ export const GroceryApp: React.FC = () => {
         <Card className="p-4 bg-muted/50 shadow-card">
           <h3 className="font-semibold mb-2">How to use:</h3>
           <ul className="space-y-1 text-sm text-muted-foreground">
-            <li>• Press "Add Items" and speak your grocery list</li>
-            <li>• Use "and", "also", or commas to separate items</li>
+            <li>• Press "Add Items" and speak your grocery list naturally</li>
+            <li>• Say "apples and bananas" or "milk, bread, eggs"</li>
+            <li>• Use words like "also", "plus", "then" to separate items</li>
             <li>• Press "Start Shopping" to begin voice check-off</li>
             <li>• Say item names while shopping to cross them off</li>
             <li>• Get a celebration when your list is complete!</li>
