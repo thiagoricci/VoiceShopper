@@ -1,10 +1,11 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { VoiceButton } from './VoiceButton';
 import { ShoppingList, type ShoppingItem } from './ShoppingList';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useToast } from '@/hooks/use-toast';
+import { useDebounce } from '@/hooks/use-debounce';
 import { ShoppingCart, Plus, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import groceryHero from '@/assets/grocery-hero.jpg';
@@ -17,13 +18,21 @@ export const GroceryApp: React.FC = () => {
   const { toast } = useToast();
   const completionAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // State for accumulating speech input
+  const [accumulatedTranscript, setAccumulatedTranscript] = useState('');
+
+  // Debounced transcript for processing
+  const debouncedTranscript = useDebounce(accumulatedTranscript, 500);
+
+
   // Speech recognition for adding items
   const addItemsRecognition = useSpeechRecognition({
     continuous: true,
     interimResults: true,
     onResult: (transcript, isFinal) => {
       if (isFinal && transcript.trim()) {
-        parseAndAddItems(transcript.trim());
+        // Accumulate the transcript instead of processing immediately
+        setAccumulatedTranscript(prev => prev + ' ' + transcript.trim());
       }
     },
     onError: (error) => {
@@ -124,7 +133,8 @@ export const GroceryApp: React.FC = () => {
       'ground beef', 'chicken breast', 'hot dogs', 'potato chips', 'corn flakes',
       'green beans', 'sweet potato', 'bell pepper', 'black beans', 'brown rice',
       'whole wheat', 'greek yogurt', 'coconut milk', 'almond milk', 'soy sauce',
-      'maple syrup', 'baking soda', 'vanilla extract', 'cream cheese', 'cottage cheese'
+      'maple syrup', 'baking soda', 'vanilla extract', 'cream cheese', 'cottage cheese',
+      'hand soap'
     ];
     
     // Try to identify compound items first
@@ -209,6 +219,14 @@ export const GroceryApp: React.FC = () => {
       });
     }
   }, [items, toast]);
+
+  // Process the debounced transcript
+  useEffect(() => {
+    if (debouncedTranscript.trim()) {
+      parseAndAddItems(debouncedTranscript.trim());
+      setAccumulatedTranscript(''); // Clear the accumulated transcript after processing
+    }
+  }, [debouncedTranscript, parseAndAddItems]);
 
   // Check off items based on speech
   const checkOffItems = useCallback((transcript: string) => {
