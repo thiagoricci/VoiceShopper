@@ -111,42 +111,42 @@ export const GroceryApp: React.FC = () => {
       );
     });
     
-    // Fallback: If we only have one item and it contains multiple words,
-    // try space-based splitting for grocery items
-    if (parsedItems.length === 1 && parsedItems[0].split(' ').length > 1) {
-      const words = parsedItems[0].split(' ');
-      
-      // Common grocery items and compound words that should stay together
-      const compoundItems = [
-        'ice cream', 'olive oil', 'peanut butter', 'orange juice', 'apple juice',
-        'ground beef', 'chicken breast', 'hot dogs', 'potato chips', 'corn flakes',
-        'green beans', 'sweet potato', 'bell pepper', 'black beans', 'brown rice',
-        'whole wheat', 'greek yogurt', 'coconut milk', 'almond milk', 'soy sauce',
-        'maple syrup', 'baking soda', 'vanilla extract', 'cream cheese', 'cottage cheese'
-      ];
-      
-      // Try to identify compound items first
-      let processedWords = [...words];
-      const identifiedItems: string[] = [];
-      
-      // Check for compound items
-      for (let i = 0; i < processedWords.length - 1; i++) {
-        const twoWordPhrase = `${processedWords[i]} ${processedWords[i + 1]}`;
-        if (compoundItems.includes(twoWordPhrase)) {
-          identifiedItems.push(twoWordPhrase);
-          processedWords.splice(i, 2); // Remove both words
-          i--; // Adjust index
-        }
-      }
-      
-      // Add remaining single words as individual items
-      identifiedItems.push(...processedWords);
-      
-      // Only use space-based parsing if we get reasonable items
-      if (identifiedItems.length > 1 && identifiedItems.every(item => item.trim().length > 0)) {
-        parsedItems = identifiedItems;
+    // Enhanced parsing for space-separated items
+    // Always try to split space-separated items, not just when there's only one item
+    const allWords: string[] = [];
+    parsedItems.forEach(item => {
+      allWords.push(...item.split(' '));
+    });
+    
+    // Common grocery items and compound words that should stay together
+    const compoundItems = [
+      'ice cream', 'olive oil', 'peanut butter', 'orange juice', 'apple juice',
+      'ground beef', 'chicken breast', 'hot dogs', 'potato chips', 'corn flakes',
+      'green beans', 'sweet potato', 'bell pepper', 'black beans', 'brown rice',
+      'whole wheat', 'greek yogurt', 'coconut milk', 'almond milk', 'soy sauce',
+      'maple syrup', 'baking soda', 'vanilla extract', 'cream cheese', 'cottage cheese'
+    ];
+    
+    // Try to identify compound items first
+    let processedWords = [...allWords];
+    const identifiedItems: string[] = [];
+    
+    // Check for compound items
+    for (let i = 0; i < processedWords.length - 1; i++) {
+      const twoWordPhrase = `${processedWords[i]} ${processedWords[i + 1]}`;
+      if (compoundItems.includes(twoWordPhrase)) {
+        identifiedItems.push(twoWordPhrase);
+        processedWords.splice(i, 2); // Remove both words
+        i--; // Adjust index
       }
     }
+    
+    // Add remaining single words as individual items
+    identifiedItems.push(...processedWords);
+    
+    // Use space-based parsing to ensure items are separated
+    // This is more aggressive than the original logic
+    parsedItems = identifiedItems;
     
     // Clean up each item
     const cleanedItems = parsedItems
@@ -174,7 +174,9 @@ export const GroceryApp: React.FC = () => {
         
         const nonItems = [
           'and', 'or', 'also', 'plus', 'then', 'next', 'um', 'uh',
-          'well', 'okay', 'alright', 'let me see', 'what else'
+          'well', 'okay', 'alright', 'let me see', 'what else', 'that\'s it',
+          'i\'m done', 'that\'s all', 'nothing else', 'no more', 'stop', 'finish',
+          'end', 'complete', 'done', 'thats it', 'im done'
         ];
         
         return !nonItems.includes(item.toLowerCase());
@@ -212,89 +214,108 @@ export const GroceryApp: React.FC = () => {
   const checkOffItems = useCallback((transcript: string) => {
     const spokenWords = transcript.toLowerCase().split(' ');
     
-    // Find matching items (check if any word in transcript matches item name)
-    const matchedItems = items.filter(item => 
-      !item.completed && 
-      spokenWords.some(word => 
-        item.name.toLowerCase().includes(word) || 
-        word.includes(item.name.toLowerCase())
-      )
-    );
+    // Find matching items with more precise matching
+    const matchedItems = items.filter(item => {
+      if (item.completed) return false;
+      
+      const itemName = item.name.toLowerCase();
+      
+      // Check for exact word matches first
+      const itemWords = itemName.split(' ');
+      const exactWordMatch = spokenWords.some(spokenWord => 
+        itemWords.some(itemWord => itemWord === spokenWord)
+      );
+      
+      // Check for partial matches (but more strict than before)
+      const partialMatch = spokenWords.some(spokenWord => 
+        itemName.includes(spokenWord) && spokenWord.length > 2
+      );
+      
+      // Check for compound item matches
+      const compoundMatch = spokenWords.some(spokenWord => 
+        spokenWord.includes(itemName) && itemName.includes(' ')
+      );
+      
+      return exactWordMatch || partialMatch || compoundMatch;
+    });
 
     if (matchedItems.length > 0) {
-      setItems(prev => 
-        prev.map(item => 
+      setItems(prev => {
+        const updatedItems = prev.map(item => 
           matchedItems.some(matched => matched.id === item.id)
             ? { ...item, completed: true }
             : item
-        )
-      );
-
-      // Check if all items are now completed
-      const newItems = items.map(item => 
-        matchedItems.some(matched => matched.id === item.id)
-          ? { ...item, completed: true }
-          : item
-      );
-      
-      const allCompleted = newItems.every(item => item.completed);
-      
-      if (allCompleted && newItems.length > 0) {
-        // Play success sound and show completion
-        playSuccessSound();
-        toast({
-          title: "🎉 Shopping Complete!",
-          description: "All items checked off your list!",
-        });
+        );
         
-        setTimeout(() => {
-          setItems([]);
-          setMode('idle');
-          shoppingRecognition.stopListening();
-        }, 2000);
-      } else {
-        toast({
-          title: "Item found!",
-          description: `Checked off: ${matchedItems.map(i => i.name).join(', ')}`,
-        });
-      }
+        const allCompleted = updatedItems.every(item => item.completed);
+        
+        if (allCompleted && updatedItems.length > 0) {
+          // Play success sound and show completion
+          playSuccessSound();
+          toast({
+            title: "🎉 Shopping Complete!",
+            description: "Congratulations! You've completed your shopping list!",
+          });
+          
+          // Add a special celebration effect
+          setTimeout(() => {
+            toast({
+              title: "🎊 Well Done! 🎊",
+              description: "You've successfully completed your shopping list!",
+              duration: 5000,
+            });
+          }, 1000);
+          
+          setTimeout(() => {
+            setItems([]);
+            setMode('idle');
+            shoppingRecognition.stopListening();
+          }, 3000);
+        } else {
+          toast({
+            title: "Item found!",
+            description: `Checked off: ${matchedItems.map(i => i.name).join(', ')}`,
+          });
+        }
+        
+        return updatedItems;
+      });
     }
   }, [items, toast, shoppingRecognition]);
 
   // Play success sound
   const playSuccessSound = () => {
     try {
-      // Create a simple success sound using Web Audio API
+      // Create a more celebratory sound using Web Audio API
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const audioContext = new AudioContextClass();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
       
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.value = 523.25; // C note
-      gainNode.gain.value = 0.3;
-      oscillator.type = 'sine';
-      
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.3);
-      
-      // Second note for harmony
-      setTimeout(() => {
-        const osc2 = audioContext.createOscillator();
-        const gain2 = audioContext.createGain();
+      // Play a sequence of notes for a celebratory effect
+      const playNote = (frequency: number, startTime: number, duration: number) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
         
-        osc2.connect(gain2);
-        gain2.connect(audioContext.destination);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
         
-        osc2.frequency.value = 659.25; // E note
-        gain2.gain.value = 0.3;
-        osc2.type = 'sine';
+        oscillator.frequency.value = frequency;
+        oscillator.type = 'sine';
         
-        osc2.start();
-        osc2.stop(audioContext.currentTime + 0.3);
-      }, 150);
+        // Create an envelope for the sound
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.01);
+        gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      };
+      
+      // Play a celebratory chord progression
+      const now = audioContext.currentTime;
+      playNote(523.25, now, 0.2); // C
+      playNote(659.25, now + 0.1, 0.2); // E
+      playNote(783.99, now + 0.2, 0.3); // G
+      playNote(1046.50, now + 0.3, 0.5); // C (octave)
     } catch (error) {
       console.error('Could not play success sound:', error);
     }
@@ -310,9 +331,17 @@ export const GroceryApp: React.FC = () => {
       return;
     }
 
+    // Stop any active recognition before starting new one
+    if (mode === 'shopping') {
+      shoppingRecognition.stopListening();
+    }
+
     setMode('adding');
     addItemsRecognition.resetTranscript();
-    addItemsRecognition.startListening();
+    // Add a small delay to ensure previous recognition is fully stopped
+    setTimeout(() => {
+      addItemsRecognition.startListening();
+    }, 100);
   };
 
   const handleStopAddingItems = () => {
@@ -339,9 +368,17 @@ export const GroceryApp: React.FC = () => {
       return;
     }
 
+    // Stop any active recognition before starting new one
+    if (mode === 'adding') {
+      addItemsRecognition.stopListening();
+    }
+
     setMode('shopping');
     shoppingRecognition.resetTranscript();
-    shoppingRecognition.startListening();
+    // Add a small delay to ensure previous recognition is fully stopped
+    setTimeout(() => {
+      shoppingRecognition.startListening();
+    }, 100);
   };
 
   const handleStopShopping = () => {
@@ -366,7 +403,7 @@ export const GroceryApp: React.FC = () => {
     if (mode !== 'idle') {
       if (mode === 'adding') {
         addItemsRecognition.stopListening();
-      } else {
+      } else if (mode === 'shopping') {
         shoppingRecognition.stopListening();
       }
       setMode('idle');
@@ -380,7 +417,7 @@ export const GroceryApp: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-subtle p-4">
+    <div className="min-h-screen bg-gradient-subtle p-3 md:p-4">
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="text-center space-y-4">
@@ -388,7 +425,7 @@ export const GroceryApp: React.FC = () => {
             <img 
               src={groceryHero} 
               alt="Voice-controlled grocery shopping" 
-              className="w-32 h-24 mx-auto rounded-xl shadow-fresh object-cover"
+              className="w-24 h-18 md:w-32 md:h-24 mx-auto rounded-xl shadow-fresh object-cover"
             />
           </div>
           <div>
@@ -402,7 +439,7 @@ export const GroceryApp: React.FC = () => {
         </div>
 
         {/* Voice Input Card */}
-        <Card className="p-6 shadow-card">
+        <Card className="p-4 md:p-6 shadow-card">
           <div className="space-y-4">
             {mode === 'idle' && (
               <div className="text-center space-y-4">
@@ -412,21 +449,24 @@ export const GroceryApp: React.FC = () => {
                     isRecording={false}
                     onStartListening={handleStartAddingItems}
                     onStopListening={() => {}}
-                    className="w-full"
+                    className="w-full md:w-auto"
+                    size="default"
                   >
-                    <Plus className="w-5 h-5" />
-                    Add Items with Voice
+                    <Plus className="w-4 h-4" />
+                    <span className="hidden sm:inline">Add Items</span>
+                    <span className="sm:hidden">Add</span>
                   </VoiceButton>
                   
                   {items.length > 0 && (
                     <Button
                       onClick={handleStartShopping}
                       variant="secondary"
-                      size="lg"
+                      size="default"
                       className="w-full font-semibold"
                     >
-                      <ShoppingCart className="w-5 h-5" />
-                      Start Shopping
+                      <ShoppingCart className="w-4 h-4" />
+                      <span className="hidden sm:inline">Start Shopping</span>
+                      <span className="sm:hidden">Shop</span>
                     </Button>
                   )}
                 </div>
@@ -516,7 +556,7 @@ export const GroceryApp: React.FC = () => {
         />
 
         {/* Instructions */}
-        <Card className="p-4 bg-muted/50 shadow-card">
+        <Card className="p-3 md:p-4 bg-muted/50 shadow-card">
           <h3 className="font-semibold mb-2">How to use:</h3>
           <ul className="space-y-1 text-sm text-muted-foreground">
             <li>• Press "Add Items" and speak your grocery list naturally</li>

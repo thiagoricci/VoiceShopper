@@ -25,7 +25,7 @@ export const ShoppingList: React.FC<ShoppingListProps> = ({
 }) => {
   if (items.length === 0) {
     return (
-      <Card className={cn("p-8 text-center shadow-card", className)}>
+      <Card className={cn("p-6 md:p-8 text-center shadow-card", className)}>
         <div className="text-muted-foreground text-lg">
           No items in your shopping list yet.
           <br />
@@ -36,7 +36,7 @@ export const ShoppingList: React.FC<ShoppingListProps> = ({
   }
 
   return (
-    <Card className={cn("p-6 shadow-card", className)}>
+    <Card className={cn("p-4 md:p-6 shadow-card", className)}>
       <div className="space-y-3">
         {items.map((item, index) => (
           <div
@@ -51,7 +51,8 @@ export const ShoppingList: React.FC<ShoppingListProps> = ({
           >
             <button
               onClick={() => onToggleItem(item.id)}
-              className="flex-shrink-0 transition-bounce"
+              className="flex-shrink-0 transition-bounce p-2"
+              aria-label={item.completed ? "Mark as not completed" : "Mark as completed"}
             >
               {item.completed ? (
                 <CheckCircle2 className="w-6 h-6 text-primary animate-check-bounce" />
@@ -62,7 +63,7 @@ export const ShoppingList: React.FC<ShoppingListProps> = ({
             
             <span
               className={cn(
-                "flex-1 text-lg font-medium transition-smooth",
+                "flex-1 text-lg font-medium transition-smooth py-2",
                 item.completed 
                   ? "text-muted-foreground line-through" 
                   : "text-foreground"
@@ -75,7 +76,8 @@ export const ShoppingList: React.FC<ShoppingListProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => onRemoveItem(item.id)}
-              className="flex-shrink-0 text-muted-foreground hover:text-destructive"
+              className="flex-shrink-0 text-muted-foreground hover:text-destructive p-2"
+              aria-label="Remove item"
             >
               <Trash2 className="w-4 h-4" />
             </Button>

@@ -95,6 +95,13 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
       });
 
       recognition.addEventListener('error', (event) => {
+        // Handle aborted error (often occurs during normal operation)
+        if (event.error === 'aborted') {
+          // Don't stop listening for aborted errors, as they often happen during normal operation
+          // The audioend handler will restart recognition if needed
+          return;
+        }
+        
         console.error('Speech recognition error:', event.error);
         onError?.(event.error);
         
