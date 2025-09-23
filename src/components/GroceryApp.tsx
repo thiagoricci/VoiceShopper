@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useDebounce } from '@/hooks/use-debounce';
 import { ShoppingCart, Plus, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isValidGroceryItem, findBestMatch } from '@/data/groceryItems';
 import groceryHero from '@/assets/grocery-hero.jpg';
 
 type AppMode = 'adding' | 'shopping' | 'idle';
@@ -157,35 +158,7 @@ export const GroceryApp: React.FC = () => {
       parsedItems = processedItems;
     }
     
-    // Comprehensive filtering for grocery items
-    const commonGroceryItems = [
-      // Fruits
-      'apple', 'apples', 'banana', 'bananas', 'orange', 'oranges', 'grape', 'grapes',
-      'strawberry', 'strawberries', 'blueberry', 'blueberries', 'lemon', 'lemons',
-      'lime', 'limes', 'avocado', 'avocados', 'pear', 'pears', 'peach', 'peaches',
-      
-      // Vegetables
-      'carrot', 'carrots', 'celery', 'onion', 'onions', 'potato', 'potatoes',
-      'tomato', 'tomatoes', 'lettuce', 'spinach', 'broccoli', 'cauliflower',
-      'cucumber', 'cucumbers', 'pepper', 'peppers', 'garlic', 'ginger',
-      
-      // Proteins
-      'chicken', 'beef', 'pork', 'fish', 'salmon', 'tuna', 'eggs', 'turkey',
-      'ham', 'bacon', 'sausage', 'tofu', 'beans', 'lentils',
-      
-      // Dairy
-      'milk', 'cheese', 'butter', 'yogurt', 'cream', 'sour cream',
-      
-      // Grains & Carbs
-      'bread', 'rice', 'pasta', 'cereal', 'oats', 'flour', 'quinoa',
-      
-      // Pantry/Condiments
-      'salt', 'pepper', 'sugar', 'honey', 'vinegar', 'ketchup', 'mustard',
-      'mayonnaise', 'oil', 'sauce', 'spice', 'spices',
-      
-      // Household
-      'soap', 'shampoo', 'toothpaste', 'detergent', 'tissue', 'tissues'
-    ];
+    // Use comprehensive grocery item database for validation
     
     // Non-grocery words to filter out
     const nonGroceryWords = [
@@ -257,55 +230,11 @@ export const GroceryApp: React.FC = () => {
         
         const lowerItem = item.toLowerCase();
         
-        // Filter out non-grocery words
+        // Filter out non-grocery words first
         if (nonGroceryWords.includes(lowerItem)) return false;
         
-        // Accept if it's a known grocery item or compound grocery item
-        const isKnownGroceryItem = commonGroceryItems.some(groceryItem => 
-          lowerItem.includes(groceryItem) || groceryItem.includes(lowerItem)
-        );
-        
-        // Accept compound items that we know are grocery items
-        const compoundItems = [
-          'ice cream', 'olive oil', 'peanut butter', 'orange juice', 'apple juice',
-          'ground beef', 'chicken breast', 'hot dogs', 'potato chips', 'corn flakes',
-          'green beans', 'sweet potato', 'bell pepper', 'black beans', 'brown rice',
-          'whole wheat', 'greek yogurt', 'coconut milk', 'almond milk', 'soy sauce',
-          'maple syrup', 'baking soda', 'vanilla extract', 'cream cheese', 'cottage cheese',
-          'hand soap', 'toilet paper', 'paper towels'
-        ];
-        
-        const isCompoundGroceryItem = compoundItems.includes(lowerItem);
-        
-        // Additional patterns for grocery items
-        const groceryPatterns = [
-          /.*milk$/,     // any kind of milk
-          /.*juice$/,    // any kind of juice  
-          /.*bread$/,    // any kind of bread
-          /.*cheese$/,   // any kind of cheese
-          /.*sauce$/,    // any kind of sauce
-          /.*oil$/,      // any kind of oil
-          /.*beans$/,    // any kind of beans
-          /.*rice$/,     // any kind of rice
-          /.*pasta$/,    // any kind of pasta
-          /.*cereal$/,   // any kind of cereal
-          /.*meat$/,     // any kind of meat
-          /.*fish$/,     // any kind of fish
-          /.*soup$/,     // any kind of soup
-          /.*powder$/,   // baking powder, protein powder, etc.
-          /.*flour$/,    // any kind of flour
-          /.*sugar$/,    // any kind of sugar
-          /.*salt$/,     // any kind of salt
-          /.*tea$/,      // any kind of tea
-          /.*coffee$/,   // any kind of coffee
-          /.*cream$/,    // any kind of cream
-          /.*butter$/,   // any kind of butter
-          /.*yogurt$/,   // any kind of yogurt
-        ];
-        
-        const matchesPattern = groceryPatterns.some(pattern => pattern.test(lowerItem));
-        
-        return isKnownGroceryItem || isCompoundGroceryItem || matchesPattern;
+        // Use comprehensive grocery database for validation
+        return isValidGroceryItem(lowerItem);
       });
     
     // Convert to ShoppingItem objects, avoiding duplicates
@@ -315,11 +244,15 @@ export const GroceryApp: React.FC = () => {
           existing.name.toLowerCase() === itemName.toLowerCase()
         )
       )
-      .map(name => ({
-        id: Math.random().toString(36).substr(2, 9),
-        name: name.charAt(0).toUpperCase() + name.slice(1),
-        completed: false,
-      }));
+      .map(name => {
+        // Use the best match from our database for consistency
+        const bestMatch = findBestMatch(name) || name;
+        return {
+          id: Math.random().toString(36).substr(2, 9),
+          name: bestMatch.charAt(0).toUpperCase() + bestMatch.slice(1),
+          completed: false,
+        };
+      });
 
     if (newItems.length > 0) {
       setItems(prev => [...prev, ...newItems]);
