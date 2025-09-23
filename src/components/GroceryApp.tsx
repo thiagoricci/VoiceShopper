@@ -112,7 +112,7 @@ export const GroceryApp: React.FC = () => {
       /\s{3,}/g
     ];
     
-    // Apply all separators
+    // Apply all separators first
     let parsedItems = [normalized];
     separators.forEach(separator => {
       parsedItems = parsedItems.flatMap(item => 
@@ -120,57 +120,130 @@ export const GroceryApp: React.FC = () => {
       );
     });
     
-    // Enhanced parsing for space-separated items
-    // Always try to split space-separated items, not just when there's only one item
-    const allWords: string[] = [];
-    parsedItems.forEach(item => {
-      allWords.push(...item.split(' '));
-    });
-    
-    // Common grocery items and compound words that should stay together
-    const compoundItems = [
-      'ice cream', 'olive oil', 'peanut butter', 'orange juice', 'apple juice',
-      'ground beef', 'chicken breast', 'hot dogs', 'potato chips', 'corn flakes',
-      'green beans', 'sweet potato', 'bell pepper', 'black beans', 'brown rice',
-      'whole wheat', 'greek yogurt', 'coconut milk', 'almond milk', 'soy sauce',
-      'maple syrup', 'baking soda', 'vanilla extract', 'cream cheese', 'cottage cheese',
-      'hand soap'
-    ];
-    
-    // Try to identify compound items first
-    let processedWords = [...allWords];
-    const identifiedItems: string[] = [];
-    
-    // Check for compound items
-    for (let i = 0; i < processedWords.length - 1; i++) {
-      const twoWordPhrase = `${processedWords[i]} ${processedWords[i + 1]}`;
-      if (compoundItems.includes(twoWordPhrase)) {
-        identifiedItems.push(twoWordPhrase);
-        processedWords.splice(i, 2); // Remove both words
-        i--; // Adjust index
+    // If no separators found and we have multiple words, try space separation
+    if (parsedItems.length === 1 && parsedItems[0].includes(' ')) {
+      const words = parsedItems[0].split(' ').filter(word => word.trim());
+      
+      // Common grocery items and compound words that should stay together
+      const compoundItems = [
+        'ice cream', 'olive oil', 'peanut butter', 'orange juice', 'apple juice',
+        'ground beef', 'chicken breast', 'hot dogs', 'potato chips', 'corn flakes',
+        'green beans', 'sweet potato', 'bell pepper', 'black beans', 'brown rice',
+        'whole wheat', 'greek yogurt', 'coconut milk', 'almond milk', 'soy sauce',
+        'maple syrup', 'baking soda', 'vanilla extract', 'cream cheese', 'cottage cheese',
+        'hand soap', 'toilet paper', 'paper towels'
+      ];
+      
+      // Process words to identify compounds and individual items
+      const processedItems: string[] = [];
+      let i = 0;
+      
+      while (i < words.length) {
+        // Check for compound items (2 words)
+        if (i < words.length - 1) {
+          const twoWordPhrase = `${words[i]} ${words[i + 1]}`;
+          if (compoundItems.includes(twoWordPhrase)) {
+            processedItems.push(twoWordPhrase);
+            i += 2;
+            continue;
+          }
+        }
+        
+        // Add single word
+        processedItems.push(words[i]);
+        i++;
       }
+      
+      parsedItems = processedItems;
     }
     
-    // Add remaining single words as individual items
-    identifiedItems.push(...processedWords);
+    // Comprehensive filtering for grocery items
+    const commonGroceryItems = [
+      // Fruits
+      'apple', 'apples', 'banana', 'bananas', 'orange', 'oranges', 'grape', 'grapes',
+      'strawberry', 'strawberries', 'blueberry', 'blueberries', 'lemon', 'lemons',
+      'lime', 'limes', 'avocado', 'avocados', 'pear', 'pears', 'peach', 'peaches',
+      
+      // Vegetables
+      'carrot', 'carrots', 'celery', 'onion', 'onions', 'potato', 'potatoes',
+      'tomato', 'tomatoes', 'lettuce', 'spinach', 'broccoli', 'cauliflower',
+      'cucumber', 'cucumbers', 'pepper', 'peppers', 'garlic', 'ginger',
+      
+      // Proteins
+      'chicken', 'beef', 'pork', 'fish', 'salmon', 'tuna', 'eggs', 'turkey',
+      'ham', 'bacon', 'sausage', 'tofu', 'beans', 'lentils',
+      
+      // Dairy
+      'milk', 'cheese', 'butter', 'yogurt', 'cream', 'sour cream',
+      
+      // Grains & Carbs
+      'bread', 'rice', 'pasta', 'cereal', 'oats', 'flour', 'quinoa',
+      
+      // Pantry/Condiments
+      'salt', 'pepper', 'sugar', 'honey', 'vinegar', 'ketchup', 'mustard',
+      'mayonnaise', 'oil', 'sauce', 'spice', 'spices',
+      
+      // Household
+      'soap', 'shampoo', 'toothpaste', 'detergent', 'tissue', 'tissues'
+    ];
     
-    // Use space-based parsing to ensure items are separated
-    // This is more aggressive than the original logic
-    parsedItems = identifiedItems;
+    // Non-grocery words to filter out
+    const nonGroceryWords = [
+      // Articles & determiners
+      'a', 'an', 'the', 'this', 'that', 'these', 'those', 'my', 'your', 'our',
+      
+      // Conjunctions
+      'and', 'or', 'but', 'so', 'yet', 'for', 'nor',
+      
+      // Prepositions
+      'of', 'to', 'in', 'on', 'at', 'by', 'for', 'with', 'without', 'from',
+      'up', 'down', 'over', 'under', 'above', 'below', 'between', 'through',
+      
+      // Verbs (common speech verbs)
+      'was', 'were', 'is', 'are', 'am', 'be', 'been', 'being', 'have', 'has',
+      'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'might',
+      'can', 'get', 'getting', 'got', 'need', 'needed', 'want', 'wanted',
+      'buy', 'buying', 'bought', 'pick', 'picking', 'picked', 'take', 'taking',
+      'took', 'put', 'putting', 'add', 'adding', 'added', 'go', 'going', 'went',
+      
+      // Thinking/filler words
+      'um', 'uh', 'er', 'ah', 'well', 'like', 'you know', 'i mean', 'actually',
+      'basically', 'literally', 'really', 'very', 'quite', 'pretty', 'sort of',
+      'kind of', 'thinking', 'thought', 'think', 'about', 'maybe', 'perhaps',
+      
+      // Pronouns
+      'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+      
+      // Adverbs
+      'also', 'too', 'very', 'really', 'quite', 'rather', 'pretty', 'more', 'most',
+      'less', 'least', 'much', 'many', 'few', 'little', 'enough', 'too much',
+      
+      // Quantity words (when standalone)
+      'some', 'any', 'all', 'every', 'each', 'both', 'either', 'neither',
+      'several', 'many', 'much', 'few', 'little', 'more', 'most', 'less', 'least',
+      
+      // Time/sequence words
+      'now', 'then', 'next', 'first', 'second', 'last', 'finally', 'after',
+      'before', 'during', 'while', 'when', 'where', 'why', 'how',
+      
+      // Common non-grocery phrases
+      'lets see', 'let me see', 'what else', 'thats it', 'that is it', 'im done',
+      'i am done', 'thats all', 'that is all', 'nothing else', 'no more',
+      'stop', 'finish', 'end', 'complete', 'done', 'okay', 'alright', 'right'
+    ];
     
-    // Clean up each item
+    // Clean up and filter items
     const cleanedItems = parsedItems
       .map(item => {
         let cleaned = item.trim();
         
         // Remove leading articles and quantifiers
-        cleaned = cleaned.replace(/^(a|an|the|some|few|couple)\s+/i, '');
+        cleaned = cleaned.replace(/^(a|an|the|some|few|couple|several)\s+/i, '');
         
         // Remove trailing periods and commas
-        cleaned = cleaned.replace(/[.,]+$/, '');
+        cleaned = cleaned.replace(/[.,!?]+$/, '');
         
-        // Handle quantities - keep them if they're part of the item name
-        // But remove standalone numbers at the beginning
+        // Remove standalone numbers at the beginning
         cleaned = cleaned.replace(/^\d+\s+(?=\w)/g, '');
         
         // Remove extra whitespace
@@ -179,17 +252,60 @@ export const GroceryApp: React.FC = () => {
         return cleaned;
       })
       .filter(item => {
-        // Filter out empty items and common non-items
+        // Filter out empty items and too short items
         if (!item || item.length < 2) return false;
         
-        const nonItems = [
-          'and', 'or', 'also', 'plus', 'then', 'next', 'um', 'uh',
-          'well', 'okay', 'alright', 'let me see', 'what else', 'that\'s it',
-          'i\'m done', 'that\'s all', 'nothing else', 'no more', 'stop', 'finish',
-          'end', 'complete', 'done', 'thats it', 'im done'
+        const lowerItem = item.toLowerCase();
+        
+        // Filter out non-grocery words
+        if (nonGroceryWords.includes(lowerItem)) return false;
+        
+        // Accept if it's a known grocery item or compound grocery item
+        const isKnownGroceryItem = commonGroceryItems.some(groceryItem => 
+          lowerItem.includes(groceryItem) || groceryItem.includes(lowerItem)
+        );
+        
+        // Accept compound items that we know are grocery items
+        const compoundItems = [
+          'ice cream', 'olive oil', 'peanut butter', 'orange juice', 'apple juice',
+          'ground beef', 'chicken breast', 'hot dogs', 'potato chips', 'corn flakes',
+          'green beans', 'sweet potato', 'bell pepper', 'black beans', 'brown rice',
+          'whole wheat', 'greek yogurt', 'coconut milk', 'almond milk', 'soy sauce',
+          'maple syrup', 'baking soda', 'vanilla extract', 'cream cheese', 'cottage cheese',
+          'hand soap', 'toilet paper', 'paper towels'
         ];
         
-        return !nonItems.includes(item.toLowerCase());
+        const isCompoundGroceryItem = compoundItems.includes(lowerItem);
+        
+        // Additional patterns for grocery items
+        const groceryPatterns = [
+          /.*milk$/,     // any kind of milk
+          /.*juice$/,    // any kind of juice  
+          /.*bread$/,    // any kind of bread
+          /.*cheese$/,   // any kind of cheese
+          /.*sauce$/,    // any kind of sauce
+          /.*oil$/,      // any kind of oil
+          /.*beans$/,    // any kind of beans
+          /.*rice$/,     // any kind of rice
+          /.*pasta$/,    // any kind of pasta
+          /.*cereal$/,   // any kind of cereal
+          /.*meat$/,     // any kind of meat
+          /.*fish$/,     // any kind of fish
+          /.*soup$/,     // any kind of soup
+          /.*powder$/,   // baking powder, protein powder, etc.
+          /.*flour$/,    // any kind of flour
+          /.*sugar$/,    // any kind of sugar
+          /.*salt$/,     // any kind of salt
+          /.*tea$/,      // any kind of tea
+          /.*coffee$/,   // any kind of coffee
+          /.*cream$/,    // any kind of cream
+          /.*butter$/,   // any kind of butter
+          /.*yogurt$/,   // any kind of yogurt
+        ];
+        
+        const matchesPattern = groceryPatterns.some(pattern => pattern.test(lowerItem));
+        
+        return isKnownGroceryItem || isCompoundGroceryItem || matchesPattern;
       });
     
     // Convert to ShoppingItem objects, avoiding duplicates
