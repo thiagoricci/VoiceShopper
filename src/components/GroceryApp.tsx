@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { VoiceButton } from './VoiceButton';
 import { ShoppingList, type ShoppingItem } from './ShoppingList';
 import { Button } from './ui/button';
+import { Mic, Square } from 'lucide-react';
 import { Card } from './ui/card';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useToast } from '@/hooks/use-toast';
@@ -22,6 +23,9 @@ export const GroceryApp: React.FC = () => {
 
   // State for accumulating speech input
   const [accumulatedTranscript, setAccumulatedTranscript] = useState('');
+
+  // Ref for storing items to add for toast notifications
+  const itemsToAddRef = useRef<ShoppingItem[] | null>(null);
 
   // Debounced transcript for processing
   const debouncedTranscript = useDebounce(accumulatedTranscript, 500);
@@ -61,6 +65,30 @@ export const GroceryApp: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [mode, items.length]);
 
+  // Handle toast notifications for added items
+  useEffect(() => {
+    if (itemsToAddRef.current) {
+      if (itemsToAddRef.current.length > 0) {
+        // Items were added
+        toast({
+          title: `Added ${itemsToAddRef.current.length} item${itemsToAddRef.current.length > 1 ? "s" : ""}`,
+          description: itemsToAddRef.current.map(item =>
+            item.quantity ? `${item.quantity}x ${item.name}` : item.name
+          ).join(", "),
+        });
+      } else {
+        // No items recognized
+        toast({
+          title: "No items recognized",
+          description: "Try speaking more clearly or use words like 'and' between items",
+          variant: "destructive",
+        });
+      }
+      // Reset the ref
+      itemsToAddRef.current = null;
+    }
+  }, [items]);
+
 
   // Speech recognition for adding items
   const addItemsRecognition = useSpeechRecognition({
@@ -89,6 +117,12 @@ export const GroceryApp: React.FC = () => {
       });
     },
   });
+  
+  const handleStopAddingItems = () => {
+    setMode('idle');
+    addItemsRecognition.stopListening();
+  };
+  
 
   // Speech recognition for shopping mode
   const shoppingRecognition = useSpeechRecognition({
@@ -109,12 +143,84 @@ export const GroceryApp: React.FC = () => {
       });
     },
   });
+  
+  const checkOffItems = useCallback((transcript: string) => {
+    const spokenWords = transcript.toLowerCase().split(' ');
+    
+    // Find matching items with more precise matching
+    const matchedItems = items.filter(item => {
+      if (item.completed) return false;
+      
+      const itemName = item.name.toLowerCase();
+      
+      // Check for exact word matches first
+      const itemWords = itemName.split(' ');
+      const exactWordMatch = spokenWords.some(spokenWord =>
+        itemWords.some(itemWord => itemWord === spokenWord)
+      );
+      
+      // Check for partial matches (but more strict than before)
+      const partialMatch = spokenWords.some(spokenWord =>
+        itemName.includes(spokenWord) && spokenWord.length > 2
+      );
+      
+      // Check for compound item matches
+      const compoundMatch = spokenWords.some(spokenWord =>
+        spokenWord.includes(itemName) && itemName.includes(' ')
+      );
+      
+      return exactWordMatch || partialMatch || compoundMatch;
+    });
 
-  // Function to extract quantity from item name
-  const extractQuantity = (itemName: string): { quantity: number | undefined, itemName: string } => {
-    // Match patterns like "2 apples", "three bananas", "a dozen eggs"
+    if (matchedItems.length > 0) {
+      setItems(prev => {
+        const updatedItems = prev.map(item =>
+          matchedItems.some(matched => matched.id === item.id)
+            ? { ...item, completed: true }
+            : item
+        );
+        
+        const allCompleted = updatedItems.every(item => item.completed);
+        
+        if (allCompleted && updatedItems.length > 0) {
+          // Play success sound and show completion
+          playSuccessSound();
+          toast({
+            title: "🎉 Shopping Complete!",
+            description: "Congratulations! You've completed your shopping list!",
+          });
+          
+          // Add a special celebration effect
+          setTimeout(() => {
+            toast({
+              title: "🎊 Well Done! 🎊",
+              description: "You've successfully completed your shopping list!",
+              duration: 5000,
+            });
+          }, 1000);
+          
+          setTimeout(() => {
+            setItems([]);
+            setMode('idle');
+            handleStopShopping();
+          }, 3000);
+        } else {
+          toast({
+            title: "Item found!",
+            description: `Checked off: ${matchedItems.map(i => i.name).join(', ')}`,
+          });
+        }
+        
+        return updatedItems;
+      });
+    }
+  }, [items]);
+
+  // Function to extract quantity and unit from item name
+  const extractQuantity = useCallback((itemName: string): { quantity: number | undefined, unit: string | undefined, itemName: string } => {
+    // Match patterns like "2 apples", "three bananas", "a dozen eggs", "1lb chicken"
     const quantityPatterns = [
-      /^(\d+)\s+(.+)$/, // "2 apples"
+      /^(\d+(?:\.\d+)?)\s*([a-zA-Z]*)\s*(.+)$/, // "2 apples" or "1.5lb chicken" (more flexible with decimals)
       /^(one|two|three|four|five|six|seven|eight|nine|ten)\s+(.+)$/i, // "three bananas"
       /^(a\s+dozen|a\s+pair|a\s+few)\s+(.+)$/i, // "a dozen eggs"
     ];
@@ -123,10 +229,13 @@ export const GroceryApp: React.FC = () => {
       const match = itemName.match(pattern);
       if (match) {
         let quantity: number | undefined;
+        let unit: string | undefined;
         
         if (pattern === quantityPatterns[0]) {
-          // Numeric quantity
-          quantity = parseInt(match[1], 10);
+          // Numeric quantity with optional unit
+          quantity = parseFloat(match[1]);
+          unit = match[2] || undefined; // Unit is optional
+          return { quantity, unit, itemName: match[3] };
         } else if (pattern === quantityPatterns[1]) {
           // Word quantity
           const wordToNumber: Record<string, number> = {
@@ -134,20 +243,20 @@ export const GroceryApp: React.FC = () => {
             'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
           };
           quantity = wordToNumber[match[1].toLowerCase()];
+          return { quantity, unit: undefined, itemName: match[2] };
         } else if (pattern === quantityPatterns[2]) {
           // Special quantities
           const specialQuantities: Record<string, number> = {
             'a dozen': 12, 'a pair': 2, 'a few': 3
           };
           quantity = specialQuantities[match[1].toLowerCase()];
+          return { quantity, unit: undefined, itemName: match[2] };
         }
-        
-        return { quantity, itemName: match[2] };
       }
     }
     
-    return { quantity: undefined, itemName };
-  };
+    return { quantity: undefined, unit: undefined, itemName };
+  }, []);
 
   // Enhanced parsing function for natural speech patterns
   const parseAndAddItems = useCallback((transcript: string) => {
@@ -294,14 +403,17 @@ export const GroceryApp: React.FC = () => {
       .map(item => {
         let cleaned = item.trim();
         
-        // Remove leading articles and quantifiers
-        cleaned = cleaned.replace(/^(a|an|the|some|few|couple|several)\s+/i, '');
+        // Remove leading articles but preserve quantities
+        // Only remove articles that are not part of a quantity pattern
+        if (!/^\d/.test(cleaned) && !/^(one|two|three|four|five|six|seven|eight|nine|ten|a dozen|a pair|a few)/i.test(cleaned)) {
+          cleaned = cleaned.replace(/^(a|an|the)\s+/i, '');
+        }
         
         // Remove trailing periods and commas
         cleaned = cleaned.replace(/[.,!?]+$/, '');
         
-        // Remove standalone numbers at the beginning
-        cleaned = cleaned.replace(/^\d+\s+(?=\w)/g, '');
+        // Note: We don't remove standalone numbers at the beginning here
+        // because the extractQuantity function handles this
         
         // Remove extra whitespace
         cleaned = cleaned.replace(/\s+/g, ' ').trim();
@@ -324,7 +436,8 @@ export const GroceryApp: React.FC = () => {
     // Convert to ShoppingItem objects, avoiding duplicates
     const newItems: ShoppingItem[] = cleanedItems
       .map(itemName => {
-        const { quantity, itemName: nameWithoutQuantity } = extractQuantity(itemName);
+        // First extract quantity and unit information
+        const { quantity, unit, itemName: nameWithoutQuantity } = extractQuantity(itemName);
         const finalName = nameWithoutQuantity || itemName;
         
         // Use the best match from our database for consistency
@@ -334,6 +447,7 @@ export const GroceryApp: React.FC = () => {
           name: bestMatch.charAt(0).toUpperCase() + bestMatch.slice(1),
           completed: false,
           quantity: quantity || undefined,
+          unit: unit || undefined,
         };
       });
 
@@ -343,25 +457,20 @@ export const GroceryApp: React.FC = () => {
           !prevItems.some(existing => existing.name.toLowerCase() === newItem.name.toLowerCase())
         );
         
+        // Store the items to add in a ref to trigger toast in useEffect
         if (itemsToAdd.length > 0) {
-          toast({
-            title: `Added ${itemsToAdd.length} item${itemsToAdd.length > 1 ? "s" : ""}`,
-            description: itemsToAdd.map(item =>
-              item.quantity ? `${item.quantity}x ${item.name}` : item.name
-            ).join(", "),
-          });
+          itemsToAddRef.current = itemsToAdd;
+        } else {
+          itemsToAddRef.current = null;
         }
         
         return [...prevItems, ...itemsToAdd];
       });
     } else if (cleanedItems.length === 0) {
-      toast({
-        title: "No items recognized",
-        description: "Try speaking more clearly or use words like 'and' between items",
-        variant: "destructive",
-      });
+      // Store the no items flag in a ref to trigger toast in useEffect
+      itemsToAddRef.current = [];
     }
-  }, [toast, extractQuantity]);
+  }, [extractQuantity]);
 
   // Process the debounced transcript
   useEffect(() => {
@@ -370,79 +479,6 @@ export const GroceryApp: React.FC = () => {
       setAccumulatedTranscript(''); // Clear the accumulated transcript after processing
     }
   }, [debouncedTranscript, parseAndAddItems]);
-
-  // Check off items based on speech
-  const checkOffItems = useCallback((transcript: string) => {
-    const spokenWords = transcript.toLowerCase().split(' ');
-    
-    // Find matching items with more precise matching
-    const matchedItems = items.filter(item => {
-      if (item.completed) return false;
-      
-      const itemName = item.name.toLowerCase();
-      
-      // Check for exact word matches first
-      const itemWords = itemName.split(' ');
-      const exactWordMatch = spokenWords.some(spokenWord => 
-        itemWords.some(itemWord => itemWord === spokenWord)
-      );
-      
-      // Check for partial matches (but more strict than before)
-      const partialMatch = spokenWords.some(spokenWord => 
-        itemName.includes(spokenWord) && spokenWord.length > 2
-      );
-      
-      // Check for compound item matches
-      const compoundMatch = spokenWords.some(spokenWord => 
-        spokenWord.includes(itemName) && itemName.includes(' ')
-      );
-      
-      return exactWordMatch || partialMatch || compoundMatch;
-    });
-
-    if (matchedItems.length > 0) {
-      setItems(prev => {
-        const updatedItems = prev.map(item => 
-          matchedItems.some(matched => matched.id === item.id)
-            ? { ...item, completed: true }
-            : item
-        );
-        
-        const allCompleted = updatedItems.every(item => item.completed);
-        
-        if (allCompleted && updatedItems.length > 0) {
-          // Play success sound and show completion
-          playSuccessSound();
-          toast({
-            title: "🎉 Shopping Complete!",
-            description: "Congratulations! You've completed your shopping list!",
-          });
-          
-          // Add a special celebration effect
-          setTimeout(() => {
-            toast({
-              title: "🎊 Well Done! 🎊",
-              description: "You've successfully completed your shopping list!",
-              duration: 5000,
-            });
-          }, 1000);
-          
-          setTimeout(() => {
-            setItems([]);
-            setMode('idle');
-            shoppingRecognition.stopListening();
-          }, 3000);
-        } else {
-          toast({
-            title: "Item found!",
-            description: `Checked off: ${matchedItems.map(i => i.name).join(', ')}`,
-          });
-        }
-        
-        return updatedItems;
-      });
-    }
-  }, [items, toast, shoppingRecognition]);
 
   // Play success sound
   const playSuccessSound = () => {
@@ -503,11 +539,6 @@ export const GroceryApp: React.FC = () => {
     setTimeout(() => {
       addItemsRecognition.startListening();
     }, 100);
-  };
-
-  const handleStopAddingItems = () => {
-    setMode('idle');
-    addItemsRecognition.stopListening();
   };
 
   const handleStartShopping = () => {
@@ -615,17 +646,18 @@ export const GroceryApp: React.FC = () => {
         {/* Header */}
         <div className="text-center space-y-4">
           <div className="relative">
-            <img 
-              src={groceryHero} 
-              alt="Voice-controlled grocery shopping" 
-              className="w-24 h-18 md:w-32 md:h-24 mx-auto rounded-xl shadow-fresh object-cover"
+            <div className="absolute inset-0 bg-gradient-fresh rounded-full blur-xl opacity-20 animate-pulse"></div>
+            <img
+              src={groceryHero}
+              alt="Voice-controlled grocery shopping"
+              className="w-24 h-24 md:w-32 md:h-32 mx-auto rounded-full shadow-fresh object-cover border-4 border-white z-10 relative"
             />
           </div>
-          <div>
-            <h1 className="text-4xl font-bold bg-gradient-fresh bg-clip-text text-transparent">
+          <div className="space-y-2">
+            <h1 className="text-4xl font-bold bg-gradient-fresh bg-clip-text text-transparent animate-bounce-in">
               Voice Grocery List
             </h1>
-            <p className="text-muted-foreground text-lg">
+            <p className="text-muted-foreground text-lg max-w-md mx-auto">
               Speak your shopping list, then shop hands-free!
             </p>
           </div>
@@ -633,9 +665,9 @@ export const GroceryApp: React.FC = () => {
 
         {/* Mode Indicator */}
         {mode !== 'idle' && (
-          <div className="flex justify-center">
+          <div className="flex justify-center animate-fade-in">
             <div className={cn(
-              "px-4 py-2 rounded-full text-sm font-semibold",
+              "px-6 py-3 rounded-full text-base font-semibold shadow-sm animate-bounce-in",
               mode === 'adding'
                 ? "bg-blue-100 text-blue-800"
                 : "bg-green-100 text-green-800"
@@ -646,20 +678,20 @@ export const GroceryApp: React.FC = () => {
         )}
 
         {/* Voice Input Card */}
-        <Card className="p-4 md:p-6 shadow-card">
-          <div className="space-y-4">
+        <Card className="p-6 md:p-8 shadow-card rounded-2xl border-0 bg-white/80 backdrop-blur-sm">
+          <div className="space-y-6">
             {mode === 'idle' && (
-              <div className="text-center space-y-4">
-                <div className="space-y-2">
+              <div className="text-center space-y-6">
+                <div className="space-y-4">
                   <VoiceButton
                     isListening={false}
                     isRecording={false}
                     onStartListening={handleStartAddingItems}
                     onStopListening={() => {}}
                     className="w-full md:w-auto"
-                    size="default"
+                    size="lg"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-5 h-5" />
                     <span className="hidden sm:inline">Add Items</span>
                     <span className="sm:hidden">Add</span>
                   </VoiceButton>
@@ -668,10 +700,10 @@ export const GroceryApp: React.FC = () => {
                     <Button
                       onClick={handleStartShopping}
                       variant="secondary"
-                      size="default"
-                      className="w-full font-semibold"
+                      size="lg"
+                      className="w-full font-semibold rounded-xl py-6 text-base hover:scale-105 transition-transform"
                     >
-                      <ShoppingCart className="w-4 h-4" />
+                      <ShoppingCart className="w-5 h-5" />
                       <span className="hidden sm:inline">Start Shopping</span>
                       <span className="sm:hidden">Shop</span>
                     </Button>
@@ -681,12 +713,15 @@ export const GroceryApp: React.FC = () => {
             )}
 
             {mode === 'adding' && (
-              <div className="space-y-4">
-                <div className="text-center">
-                  <h3 className="text-lg font-semibold text-primary">
-                    🎤 Listening for Items
+              <div className="space-y-6 animate-fade-in">
+                <div className="text-center space-y-2">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-voice text-white animate-pulse-voice">
+                    <Mic className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-primary">
+                    Listening for Items
                   </h3>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground">
                     Say your grocery items separated by "and" or commas
                   </p>
                 </div>
@@ -697,26 +732,31 @@ export const GroceryApp: React.FC = () => {
                   onStartListening={handleStartAddingItems}
                   onStopListening={handleStopAddingItems}
                   className="w-full"
+                  size="lg"
                 >
+                  <Square className="w-5 h-5" />
                   Stop Adding Items
                 </VoiceButton>
                 
                 {getCurrentTranscript() && (
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-sm text-muted-foreground">Current speech:</p>
-                    <p className="font-medium">{getCurrentTranscript()}</p>
+                  <div className="p-4 bg-muted/50 rounded-xl border animate-slide-up">
+                    <p className="text-sm text-muted-foreground mb-1">Current speech:</p>
+                    <p className="font-medium text-lg">{getCurrentTranscript()}</p>
                   </div>
                 )}
               </div>
             )}
 
             {mode === 'shopping' && (
-              <div className="space-y-4">
-                <div className="text-center">
-                  <h3 className="text-lg font-semibold text-voice-success">
-                    🛒 Shopping Mode Active
+              <div className="space-y-6 animate-fade-in">
+                <div className="text-center space-y-2">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-success text-white animate-pulse-voice">
+                    <ShoppingCart className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-voice-success">
+                    Shopping Mode Active
                   </h3>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground">
                     Say item names to check them off your list
                   </p>
                 </div>
@@ -727,25 +767,27 @@ export const GroceryApp: React.FC = () => {
                   onStartListening={handleStartShopping}
                   onStopListening={handleStopShopping}
                   className="w-full"
+                  size="lg"
                 >
+                  <Square className="w-5 h-5" />
                   Stop Shopping
                 </VoiceButton>
                 
                 {getCurrentTranscript() && (
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-sm text-muted-foreground">Listening for:</p>
-                    <p className="font-medium">{getCurrentTranscript()}</p>
+                  <div className="p-4 bg-muted/50 rounded-xl border animate-slide-up">
+                    <p className="text-sm text-muted-foreground mb-1">Listening for:</p>
+                    <p className="font-medium text-lg">{getCurrentTranscript()}</p>
                   </div>
                 )}
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex gap-3 pt-4">
               <Button
                 onClick={saveToListHistory}
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="flex-1 text-muted-foreground hover:text-primary"
+                className="flex-1 text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-xl py-5"
                 aria-label="Save current shopping list to history"
               >
                 <Save className="w-4 h-4" />
@@ -753,9 +795,9 @@ export const GroceryApp: React.FC = () => {
               </Button>
               <Button
                 onClick={handleClearList}
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="flex-1 text-muted-foreground hover:text-destructive"
+                className="flex-1 text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-xl py-5"
                 aria-label="Clear current shopping list"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -774,44 +816,79 @@ export const GroceryApp: React.FC = () => {
         />
 
         {/* Instructions */}
-        <Card className="p-3 md:p-4 bg-muted/50 shadow-card">
-          <h3 className="font-semibold mb-2">How to use:</h3>
-          <ul className="space-y-1 text-sm text-muted-foreground">
-            <li>• Press "Add Items" and speak your grocery list naturally</li>
-            <li>• Say "apples and bananas" or "milk, bread, eggs"</li>
-            <li>• Use words like "also", "plus", "then" to separate items</li>
-            <li>• Press "Start Shopping" to begin voice check-off</li>
-            <li>• Say item names while shopping to cross them off</li>
-            <li>• Get a celebration when your list is complete!</li>
-          </ul>
+        <Card className="p-6 md:p-8 shadow-card rounded-2xl border-0 bg-white/80 backdrop-blur-sm">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-primary font-bold text-lg">1</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Add Items with Voice</h3>
+                <p className="text-muted-foreground text-sm">Press "Add Items" and speak your grocery list naturally</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-primary font-bold text-lg">2</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Natural Speech Patterns</h3>
+                <p className="text-muted-foreground text-sm">Say "apples and bananas" or "milk, bread, eggs"</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-primary font-bold text-lg">3</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Start Shopping</h3>
+                <p className="text-muted-foreground text-sm">Press "Start Shopping" to begin voice check-off</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-primary font-bold text-lg">4</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Voice Check-off</h3>
+                <p className="text-muted-foreground text-sm">Say item names while shopping to cross them off</p>
+              </div>
+            </div>
+          </div>
         </Card>
         
         {/* History Section */}
         {history.length > 0 && (
-          <Card className="p-4 md:p-6 shadow-card">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Saved Lists</h3>
+          <Card className="p-6 md:p-8 shadow-card rounded-2xl border-0 bg-white/80 backdrop-blur-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold">Saved Lists</h3>
               <Button
                 onClick={clearHistory}
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="text-muted-foreground hover:text-destructive"
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-xl"
                 aria-label="Clear all saved shopping lists from history"
               >
                 Clear History
               </Button>
             </div>
-            <div className="space-y-2 max-h-40 overflow-y-auto">
+            <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
               {history.map((list, index) => (
                 <div
                   key={index}
-                  className="flex justify-between items-center p-3 bg-muted rounded-lg cursor-pointer hover:bg-muted/80"
+                  className="flex justify-between items-center p-4 bg-muted/50 rounded-xl cursor-pointer hover:bg-muted transition-colors duration-300 border"
                   onClick={() => loadFromHistory(index)}
                 >
-                  <span className="text-sm">
-                    {list.length} item{list.length !== 1 ? 's' : ''}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
+                  <div className="flex items-center gap-3">
+                    <div className="w-3 h-3 rounded-full bg-primary"></div>
+                    <span className="font-medium">
+                      {list.length} item{list.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <span className="text-sm text-muted-foreground">
                     {new Date().toLocaleDateString()}
                   </span>
                 </div>

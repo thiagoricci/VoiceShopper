@@ -219,6 +219,65 @@ export const findBestMatch = (item: string): string | null => {
       current.length > longest.length ? current : longest
     );
   }
+  return null;
+};
+
+// Function to determine the category of an item
+export const getItemCategory = (item: string): string | null => {
+  const normalized = item.toLowerCase().trim();
+  
+  // Check each category
+  for (const [category, items] of Object.entries(GROCERY_ITEMS)) {
+    // Direct match
+    if (items.includes(normalized)) {
+      return category;
+    }
+    
+    // Check for partial matches (plurals and variations)
+    const hasPartialMatch = items.some(groceryItem => {
+      // Handle plurals (e.g., "apples" matches "apple")
+      if (normalized.endsWith('s') && groceryItem === normalized.slice(0, -1)) {
+        return true;
+      }
+      if (groceryItem.endsWith('s') && normalized === groceryItem.slice(0, -1)) {
+        return true;
+      }
+      
+      // Handle compound items (e.g., "greek yogurt" contains "yogurt")
+      if (normalized.includes(' ') || groceryItem.includes(' ')) {
+        const normalizedWords = normalized.split(' ');
+        const groceryWords = groceryItem.split(' ');
+        
+        // Check if all words in grocery item are present in the normalized item
+        if (groceryWords.every(word => normalizedWords.includes(word))) {
+          return true;
+        }
+      }
+      
+      return false;
+    });
+    
+    if (hasPartialMatch) {
+      return category;
+    }
+  }
   
   return null;
+};
+
+// Category display names
+export const CATEGORY_NAMES: Record<string, string> = {
+  fruits: 'Fruits',
+  vegetables: 'Vegetables',
+  proteins: 'Proteins',
+  dairy: 'Dairy & Alternatives',
+  grains: 'Grains & Bread',
+  pantry: 'Pantry & Condiments',
+  canned: 'Canned & Jarred Goods',
+  beverages: 'Beverages',
+  frozen: 'Frozen Foods',
+  snacks: 'Snacks & Sweets',
+  household: 'Household Items',
+  personal: 'Personal Care',
+  baby_pet: 'Baby & Pet'
 };

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { SpeechRecognitionEvent, SpeechRecognitionErrorEvent } from '@/types/speech';
 
 // Enhanced Speech Recognition Hook optimized for mobile
@@ -72,7 +72,8 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
           }, 100);
         }
       });
-
+      
+      
       recognition.addEventListener('result', (event) => {
         // Reset inactivity timeout on speech detection
         if (inactivityTimeoutRef.current) {
@@ -151,7 +152,17 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
         clearTimeout(inactivityTimeoutRef.current);
       }
     };
-  }, [continuous, interimResults, lang, onResult, onEnd, onError, isListening]);
+  }, [continuous, interimResults, lang, onResult, onEnd, onError]);
+
+  
+  // Clean up inactivity timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (inactivityTimeoutRef.current) {
+        clearTimeout(inactivityTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const startListening = useCallback(() => {
     if (!isSupported || !recognitionRef.current) return;
@@ -159,30 +170,13 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
     try {
       setIsListening(true);
       setTranscript('');
+      setFinalTranscript('');
       recognitionRef.current.start();
-      
-      // Start inactivity timeout
-      if (timeout > 0) {
-        if (inactivityTimeoutRef.current) {
-          clearTimeout(inactivityTimeoutRef.current);
-        }
-        
-        inactivityTimeoutRef.current = setTimeout(() => {
-          if (isListening && recognitionRef.current) {
-            try {
-              recognitionRef.current.stop();
-              setIsListening(false);
-            } catch (error) {
-              console.error('Failed to stop recognition on timeout:', error);
-            }
-          }
-        }, timeout);
-      }
     } catch (error) {
       console.error('Failed to start speech recognition:', error);
       setIsListening(false);
     }
-  }, [isSupported, timeout, isListening]);
+  }, [isSupported]);
 
   const stopListening = useCallback(() => {
     if (!recognitionRef.current) return;
@@ -207,7 +201,7 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
     setFinalTranscript('');
   }, []);
 
-  return {
+  const returnValue = useMemo(() => ({
     isSupported,
     isListening,
     transcript,
@@ -215,5 +209,7 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
     startListening,
     stopListening,
     resetTranscript,
-  };
+  }), [isSupported, isListening, transcript, finalTranscript, startListening, stopListening, resetTranscript]);
+  
+  return returnValue;
 };

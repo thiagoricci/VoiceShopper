@@ -151,6 +151,11 @@
   100% { transform: scale(1); }
 }
 
+@keyframes fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
 /* Utility classes */
 @layer utilities {
   .animate-pulse-voice {
@@ -167,6 +172,10 @@
   
   .animate-check-bounce {
     animation: check-bounce 0.4s ease-out;
+  }
+  
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
   }
   
   .gradient-fresh {
