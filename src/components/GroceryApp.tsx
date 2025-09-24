@@ -316,11 +316,6 @@ export const GroceryApp: React.FC = () => {
     
     // Convert to ShoppingItem objects, avoiding duplicates
     const newItems: ShoppingItem[] = cleanedItems
-      .filter(itemName =>
-        !items.some(existing =>
-          existing.name.toLowerCase() === itemName.toLowerCase()
-        )
-      )
       .map(itemName => {
         const { quantity, itemName: nameWithoutQuantity } = extractQuantity(itemName);
         const finalName = nameWithoutQuantity || itemName;
@@ -336,12 +331,21 @@ export const GroceryApp: React.FC = () => {
       });
 
     if (newItems.length > 0) {
-      setItems(prev => [...prev, ...newItems]);
-      toast({
-        title: `Added ${newItems.length} item${newItems.length > 1 ? "s" : ""}`,
-        description: newItems.map(item =>
-          item.quantity ? `${item.quantity}x ${item.name}` : item.name
-        ).join(", "),
+      setItems(prevItems => {
+        const itemsToAdd = newItems.filter(newItem =>
+          !prevItems.some(existing => existing.name.toLowerCase() === newItem.name.toLowerCase())
+        );
+        
+        if (itemsToAdd.length > 0) {
+          toast({
+            title: `Added ${itemsToAdd.length} item${itemsToAdd.length > 1 ? "s" : ""}`,
+            description: itemsToAdd.map(item =>
+              item.quantity ? `${item.quantity}x ${item.name}` : item.name
+            ).join(", "),
+          });
+        }
+        
+        return [...prevItems, ...itemsToAdd];
       });
     } else if (cleanedItems.length === 0) {
       toast({
@@ -350,7 +354,7 @@ export const GroceryApp: React.FC = () => {
         variant: "destructive",
       });
     }
-  }, [items, toast]);
+  }, [toast, extractQuantity]);
 
   // Process the debounced transcript
   useEffect(() => {
