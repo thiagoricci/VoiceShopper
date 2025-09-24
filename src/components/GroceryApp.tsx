@@ -69,6 +69,13 @@ export const GroceryApp: React.FC = () => {
     timeout: 5000, // 5 second timeout
     onResult: (transcript, isFinal) => {
       if (isFinal && transcript.trim()) {
+        const lowerTranscript = transcript.toLowerCase().trim();
+        const stopPhrases = ["that's it", "done", "list complete"];
+
+        if (stopPhrases.some(phrase => lowerTranscript.includes(phrase))) {
+          handleStopAddingItems();
+          return;
+        }
         // Accumulate the transcript instead of processing immediately
         setAccumulatedTranscript(prev => prev + ' ' + transcript.trim());
       }
