@@ -8,6 +8,7 @@ export interface ShoppingItem {
   id: string;
   name: string;
   completed: boolean;
+  quantity?: number;
 }
 
 interface ShoppingListProps {
@@ -69,7 +70,7 @@ export const ShoppingList: React.FC<ShoppingListProps> = ({
                   : "text-foreground"
               )}
             >
-              {item.name}
+              {item.quantity ? `${item.quantity}x ` : ''}{item.name}
             </span>
             
             <Button

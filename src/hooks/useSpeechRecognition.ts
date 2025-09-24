@@ -6,6 +6,7 @@ export interface UseSpeechRecognitionOptions {
   continuous?: boolean;
   interimResults?: boolean;
   lang?: string;
+  timeout?: number; // Timeout in milliseconds
   onResult?: (transcript: string, isFinal: boolean) => void;
   onEnd?: () => void;
   onError?: (error: string) => void;
@@ -27,6 +28,7 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
     continuous = true,
     interimResults = true,
     lang = 'en-US',
+    timeout = 5000, // Default 5 seconds
     onResult,
     onEnd,
     onError,
@@ -39,6 +41,7 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
   
   const recognitionRef = useRef<any>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const inactivityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize speech recognition with mobile optimizations
   useEffect(() => {
@@ -71,6 +74,25 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
       });
 
       recognition.addEventListener('result', (event) => {
+        // Reset inactivity timeout on speech detection
+        if (inactivityTimeoutRef.current) {
+          clearTimeout(inactivityTimeoutRef.current);
+        }
+        
+        // Set new inactivity timeout
+        if (timeout > 0 && isListening) {
+          inactivityTimeoutRef.current = setTimeout(() => {
+            if (isListening && recognitionRef.current) {
+              try {
+                recognitionRef.current.stop();
+                setIsListening(false);
+              } catch (error) {
+                console.error('Failed to stop recognition on timeout:', error);
+              }
+            }
+          }, timeout);
+        }
+        
         let interimTranscript = '';
         let finalText = '';
         
@@ -125,6 +147,9 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      if (inactivityTimeoutRef.current) {
+        clearTimeout(inactivityTimeoutRef.current);
+      }
     };
   }, [continuous, interimResults, lang, onResult, onEnd, onError, isListening]);
 
@@ -135,11 +160,29 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
       setIsListening(true);
       setTranscript('');
       recognitionRef.current.start();
+      
+      // Start inactivity timeout
+      if (timeout > 0) {
+        if (inactivityTimeoutRef.current) {
+          clearTimeout(inactivityTimeoutRef.current);
+        }
+        
+        inactivityTimeoutRef.current = setTimeout(() => {
+          if (isListening && recognitionRef.current) {
+            try {
+              recognitionRef.current.stop();
+              setIsListening(false);
+            } catch (error) {
+              console.error('Failed to stop recognition on timeout:', error);
+            }
+          }
+        }, timeout);
+      }
     } catch (error) {
       console.error('Failed to start speech recognition:', error);
       setIsListening(false);
     }
-  }, [isSupported]);
+  }, [isSupported, timeout, isListening]);
 
   const stopListening = useCallback(() => {
     if (!recognitionRef.current) return;
@@ -147,6 +190,9 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
     setIsListening(false);
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
+    }
+    if (inactivityTimeoutRef.current) {
+      clearTimeout(inactivityTimeoutRef.current);
     }
     
     try {

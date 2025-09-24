@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { VoiceButton } from './VoiceButton';
 import { ShoppingList, type ShoppingItem } from './ShoppingList';
 import { Button } from './ui/button';
@@ -6,7 +6,7 @@ import { Card } from './ui/card';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useToast } from '@/hooks/use-toast';
 import { useDebounce } from '@/hooks/use-debounce';
-import { ShoppingCart, Plus, RotateCcw } from 'lucide-react';
+import { ShoppingCart, Plus, RotateCcw, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isValidGroceryItem, findBestMatch } from '@/data/groceryItems';
 import groceryHero from '@/assets/grocery-hero.jpg';
@@ -16,6 +16,7 @@ type AppMode = 'adding' | 'shopping' | 'idle';
 export const GroceryApp: React.FC = () => {
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [mode, setMode] = useState<AppMode>('idle');
+  const [history, setHistory] = useState<ShoppingItem[][]>([]);
   const { toast } = useToast();
   const completionAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -25,11 +26,47 @@ export const GroceryApp: React.FC = () => {
   // Debounced transcript for processing
   const debouncedTranscript = useDebounce(accumulatedTranscript, 500);
 
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle shortcuts when not in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      // Start adding items with 'a' key
+      if (e.key === 'a' && mode === 'idle') {
+        e.preventDefault();
+        handleStartAddingItems();
+      }
+      
+      // Start shopping with 's' key
+      if (e.key === 's' && mode === 'idle' && items.length > 0) {
+        e.preventDefault();
+        handleStartShopping();
+      }
+      
+      // Stop current action with 'Escape' key
+      if (e.key === 'Escape' && mode !== 'idle') {
+        e.preventDefault();
+        if (mode === 'adding') {
+          handleStopAddingItems();
+        } else if (mode === 'shopping') {
+          handleStopShopping();
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mode, items.length]);
+
 
   // Speech recognition for adding items
   const addItemsRecognition = useSpeechRecognition({
     continuous: true,
     interimResults: true,
+    timeout: 5000, // 5 second timeout
     onResult: (transcript, isFinal) => {
       if (isFinal && transcript.trim()) {
         // Accumulate the transcript instead of processing immediately
@@ -50,6 +87,7 @@ export const GroceryApp: React.FC = () => {
   const shoppingRecognition = useSpeechRecognition({
     continuous: true,
     interimResults: true,
+    timeout: 5000, // 5 second timeout
     onResult: (transcript, isFinal) => {
       if (isFinal && transcript.trim()) {
         checkOffItems(transcript.trim());
@@ -64,6 +102,45 @@ export const GroceryApp: React.FC = () => {
       });
     },
   });
+
+  // Function to extract quantity from item name
+  const extractQuantity = (itemName: string): { quantity: number | undefined, itemName: string } => {
+    // Match patterns like "2 apples", "three bananas", "a dozen eggs"
+    const quantityPatterns = [
+      /^(\d+)\s+(.+)$/, // "2 apples"
+      /^(one|two|three|four|five|six|seven|eight|nine|ten)\s+(.+)$/i, // "three bananas"
+      /^(a\s+dozen|a\s+pair|a\s+few)\s+(.+)$/i, // "a dozen eggs"
+    ];
+    
+    for (const pattern of quantityPatterns) {
+      const match = itemName.match(pattern);
+      if (match) {
+        let quantity: number | undefined;
+        
+        if (pattern === quantityPatterns[0]) {
+          // Numeric quantity
+          quantity = parseInt(match[1], 10);
+        } else if (pattern === quantityPatterns[1]) {
+          // Word quantity
+          const wordToNumber: Record<string, number> = {
+            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
+          };
+          quantity = wordToNumber[match[1].toLowerCase()];
+        } else if (pattern === quantityPatterns[2]) {
+          // Special quantities
+          const specialQuantities: Record<string, number> = {
+            'a dozen': 12, 'a pair': 2, 'a few': 3
+          };
+          quantity = specialQuantities[match[1].toLowerCase()];
+        }
+        
+        return { quantity, itemName: match[2] };
+      }
+    }
+    
+    return { quantity: undefined, itemName };
+  };
 
   // Enhanced parsing function for natural speech patterns
   const parseAndAddItems = useCallback((transcript: string) => {
@@ -116,7 +193,7 @@ export const GroceryApp: React.FC = () => {
     // Apply all separators first
     let parsedItems = [normalized];
     separators.forEach(separator => {
-      parsedItems = parsedItems.flatMap(item => 
+      parsedItems = parsedItems.flatMap(item =>
         item.split(separator).filter(part => part.trim().length > 0)
       );
     });
@@ -239,18 +316,22 @@ export const GroceryApp: React.FC = () => {
     
     // Convert to ShoppingItem objects, avoiding duplicates
     const newItems: ShoppingItem[] = cleanedItems
-      .filter(itemName => 
-        !items.some(existing => 
+      .filter(itemName =>
+        !items.some(existing =>
           existing.name.toLowerCase() === itemName.toLowerCase()
         )
       )
-      .map(name => {
+      .map(itemName => {
+        const { quantity, itemName: nameWithoutQuantity } = extractQuantity(itemName);
+        const finalName = nameWithoutQuantity || itemName;
+        
         // Use the best match from our database for consistency
-        const bestMatch = findBestMatch(name) || name;
+        const bestMatch = findBestMatch(finalName) || finalName;
         return {
           id: Math.random().toString(36).substr(2, 9),
           name: bestMatch.charAt(0).toUpperCase() + bestMatch.slice(1),
           completed: false,
+          quantity: quantity || undefined,
         };
       });
 
@@ -258,7 +339,9 @@ export const GroceryApp: React.FC = () => {
       setItems(prev => [...prev, ...newItems]);
       toast({
         title: `Added ${newItems.length} item${newItems.length > 1 ? "s" : ""}`,
-        description: newItems.map(item => item.name).join(", "),
+        description: newItems.map(item =>
+          item.quantity ? `${item.quantity}x ${item.name}` : item.name
+        ).join(", "),
       });
     } else if (cleanedItems.length === 0) {
       toast({
@@ -477,6 +560,38 @@ export const GroceryApp: React.FC = () => {
     }
   };
 
+  // Save current list to history
+  const saveToListHistory = () => {
+    if (items.length > 0) {
+      setHistory(prev => [items, ...prev.slice(0, 9)]); // Keep only last 10 lists
+      toast({
+        title: "List Saved",
+        description: "Your shopping list has been saved to history.",
+      });
+    }
+  };
+
+  // Load list from history
+  const loadFromHistory = (index: number) => {
+    const list = history[index];
+    if (list) {
+      setItems(list);
+      toast({
+        title: "List Loaded",
+        description: "Shopping list loaded from history.",
+      });
+    }
+  };
+
+  // Clear history
+  const clearHistory = () => {
+    setHistory([]);
+    toast({
+      title: "History Cleared",
+      description: "Shopping list history has been cleared.",
+    });
+  };
+
   const getCurrentTranscript = () => {
     if (mode === 'adding') return addItemsRecognition.transcript;
     if (mode === 'shopping') return shoppingRecognition.transcript;
@@ -504,6 +619,20 @@ export const GroceryApp: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {/* Mode Indicator */}
+        {mode !== 'idle' && (
+          <div className="flex justify-center">
+            <div className={cn(
+              "px-4 py-2 rounded-full text-sm font-semibold",
+              mode === 'adding'
+                ? "bg-blue-100 text-blue-800"
+                : "bg-green-100 text-green-800"
+            )}>
+              {mode === 'adding' ? '🎤 Adding Items' : '🛒 Shopping Mode'}
+            </div>
+          </div>
+        )}
 
         {/* Voice Input Card */}
         <Card className="p-4 md:p-6 shadow-card">
@@ -600,17 +729,28 @@ export const GroceryApp: React.FC = () => {
               </div>
             )}
 
-            {items.length > 0 && (
+            <div className="flex gap-2">
+              <Button
+                onClick={saveToListHistory}
+                variant="ghost"
+                size="sm"
+                className="flex-1 text-muted-foreground hover:text-primary"
+                aria-label="Save current shopping list to history"
+              >
+                <Save className="w-4 h-4" />
+                Save List
+              </Button>
               <Button
                 onClick={handleClearList}
                 variant="ghost"
                 size="sm"
-                className="w-full text-muted-foreground hover:text-destructive"
+                className="flex-1 text-muted-foreground hover:text-destructive"
+                aria-label="Clear current shopping list"
               >
                 <RotateCcw className="w-4 h-4" />
                 Clear List
               </Button>
-            )}
+            </div>
           </div>
         </Card>
 
@@ -634,6 +774,40 @@ export const GroceryApp: React.FC = () => {
             <li>• Get a celebration when your list is complete!</li>
           </ul>
         </Card>
+        
+        {/* History Section */}
+        {history.length > 0 && (
+          <Card className="p-4 md:p-6 shadow-card">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Saved Lists</h3>
+              <Button
+                onClick={clearHistory}
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive"
+                aria-label="Clear all saved shopping lists from history"
+              >
+                Clear History
+              </Button>
+            </div>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {history.map((list, index) => (
+                <div
+                  key={index}
+                  className="flex justify-between items-center p-3 bg-muted rounded-lg cursor-pointer hover:bg-muted/80"
+                  onClick={() => loadFromHistory(index)}
+                >
+                  <span className="text-sm">
+                    {list.length} item{list.length !== 1 ? 's' : ''}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date().toLocaleDateString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
