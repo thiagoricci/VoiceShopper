@@ -712,7 +712,7 @@ export const GroceryApp: React.FC = () => {
                 onClick={handleStartAddingItems}
                 variant="default"
                 size="lg"
-                className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all font-medium"
+                className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all font-medium"
                 disabled={mode !== 'idle'}
               >
                 <Plus className="w-5 h-5 mr-2" />
