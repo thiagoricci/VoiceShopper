@@ -692,7 +692,7 @@ export const GroceryApp: React.FC = () => {
               onClick={() => setShowInstructions(!showInstructions)}
               variant="outline"
               size="lg"
-              className="px-4 py-3 text-sm font-medium hover:bg-primary/10 rounded-xl border-primary/20"
+              className="px-4 py-3 text-sm font-medium hover:bg-primary/10 rounded-xl border-primary/20 transition-none"
             >
               Instructions
             </Button>
