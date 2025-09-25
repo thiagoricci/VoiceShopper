@@ -265,14 +265,14 @@ export const ShoppingList: React.FC<ShoppingListProps> = ({
                     aria-label={item.completed ? "Mark as not completed" : "Mark as completed"}
                   >
                     {item.completed ? (
-                      <CheckCircle2 className="w-7 h-7 text-primary animate-check-bounce" />
+                      <CheckCircle2 className="w-5 h-5 text-primary animate-check-bounce" />
                     ) : (
-                      <Circle className="w-7 h-7 text-muted-foreground hover:text-primary" />
+                      <Circle className="w-5 h-5 text-muted-foreground hover:text-primary" />
                     )}
                   </button>
                   
                   {/* Item-specific or category emoji */}
-                  <span className="text-muted-foreground flex-shrink-0">
+                  <span className="text-4xl text-muted-foreground flex-shrink-0">
                     {getItemEmoji(item.name)}
                   </span>
                   

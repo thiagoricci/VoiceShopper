@@ -18,6 +18,8 @@ export const GroceryApp: React.FC = () => {
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [mode, setMode] = useState<AppMode>('idle');
   const [history, setHistory] = useState<ShoppingItem[][]>([]);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [hasStartedShopping, setHasStartedShopping] = useState(false);
   const { toast } = useToast();
   const completionAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -94,11 +96,11 @@ export const GroceryApp: React.FC = () => {
   const addItemsRecognition = useSpeechRecognition({
     continuous: true,
     interimResults: true,
-    timeout: 5000, // 5 second timeout
+    timeout: 3000, // 3 seconds - balanced timeout for natural speech
     onResult: (transcript, isFinal) => {
       if (isFinal && transcript.trim()) {
         const lowerTranscript = transcript.toLowerCase().trim();
-        const stopPhrases = ["that's it", "done", "list complete"];
+        const stopPhrases = ["that's it", "done", "list complete", "stop", "finish"];
 
         if (stopPhrases.some(phrase => lowerTranscript.includes(phrase))) {
           handleStopAddingItems();
@@ -106,6 +108,14 @@ export const GroceryApp: React.FC = () => {
         }
         // Accumulate the transcript instead of processing immediately
         setAccumulatedTranscript(prev => prev + ' ' + transcript.trim());
+      }
+    },
+    onEnd: () => {
+      // Automatically stop adding mode when speech recognition ends
+      if (mode === 'adding') {
+        setTimeout(() => {
+          handleStopAddingItems();
+        }, 2000); // Longer delay to allow natural speech patterns
       }
     },
     onError: (error) => {
@@ -128,7 +138,7 @@ export const GroceryApp: React.FC = () => {
   const shoppingRecognition = useSpeechRecognition({
     continuous: true,
     interimResults: true,
-    timeout: 5000, // 5 second timeout
+    timeout: 0, // No timeout - shopping mode can run indefinitely
     onResult: (transcript, isFinal) => {
       if (isFinal && transcript.trim()) {
         checkOffItems(transcript.trim());
@@ -566,6 +576,7 @@ export const GroceryApp: React.FC = () => {
     }
 
     setMode('shopping');
+    setHasStartedShopping(true);
     shoppingRecognition.resetTranscript();
     // Add a small delay to ensure previous recognition is fully stopped
     setTimeout(() => {
@@ -575,15 +586,45 @@ export const GroceryApp: React.FC = () => {
 
   const handleStopShopping = () => {
     setMode('idle');
+    setHasStartedShopping(false);
     shoppingRecognition.stopListening();
   };
 
   const handleToggleItem = (id: string) => {
-    setItems(prev => 
-      prev.map(item => 
+    setItems(prev => {
+      const updatedItems = prev.map(item =>
         item.id === id ? { ...item, completed: !item.completed } : item
-      )
-    );
+      );
+
+      // Check if all items are now completed
+      const allCompleted = updatedItems.every(item => item.completed);
+
+      if (allCompleted && updatedItems.length > 0) {
+        // Play success sound and show completion
+        playSuccessSound();
+        toast({
+          title: "🎉 Shopping Complete!",
+          description: "Congratulations! You've completed your shopping list!",
+        });
+
+        // Add a special celebration effect
+        setTimeout(() => {
+          toast({
+            title: "🎊 Well Done! 🎊",
+            description: "You've successfully completed your shopping list!",
+            duration: 5000,
+          });
+        }, 1000);
+
+        // Clear the list and reset mode after delay
+        setTimeout(() => {
+          setItems([]);
+          setMode('idle');
+        }, 3000);
+      }
+
+      return updatedItems;
+    });
   };
 
   const handleRemoveItem = (id: string) => {
@@ -592,6 +633,7 @@ export const GroceryApp: React.FC = () => {
 
   const handleClearList = () => {
     setItems([]);
+    setHasStartedShopping(false);
     if (mode !== 'idle') {
       if (mode === 'adding') {
         addItemsRecognition.stopListening();
@@ -641,173 +683,156 @@ export const GroceryApp: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-subtle p-3 md:p-4">
-      <div className="max-w-2xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <div className="relative">
-            <div className="absolute inset-0 bg-gradient-fresh rounded-full blur-xl opacity-20 animate-pulse"></div>
-            <img
-              src={groceryHero}
-              alt="Voice-controlled grocery shopping"
-              className="w-24 h-24 md:w-32 md:h-32 mx-auto rounded-full shadow-fresh object-cover border-4 border-white z-10 relative"
-            />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-4xl font-bold bg-gradient-fresh bg-clip-text text-transparent animate-bounce-in">
-              Voice Grocery List
+    <div className="min-h-screen bg-gradient-subtle p-2 md:p-3">
+      <div className="max-w-2xl mx-auto space-y-3 md:space-y-4">
+        {/* Header with Instructions, Add Items, and Start Shopping buttons */}
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <Button
+              onClick={() => setShowInstructions(!showInstructions)}
+              variant="outline"
+              size="lg"
+              className="px-4 py-3 text-sm font-medium hover:bg-primary/10 rounded-xl border-primary/20"
+            >
+              Instructions
+            </Button>
+
+            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-center flex-1 mt-6 md:mt-8 mb-6 md:mb-8">
+              Voice Shopper
             </h1>
-            <p className="text-muted-foreground text-lg max-w-md mx-auto">
-              Speak your shopping list, then shop hands-free!
-            </p>
+
+            {items.length > 0 && !hasStartedShopping && (
+              <Button
+                onClick={handleStartShopping}
+                variant="outline"
+                size="lg"
+                className="px-4 py-3 text-sm font-medium hover:bg-blue-500 hover:text-white hover:border-blue-500 rounded-xl border-primary/20 transition-all duration-200"
+              >
+                🛒 Start Shopping
+              </Button>
+            )}
+
+            {hasStartedShopping && (
+              <Button
+                onClick={handleStopShopping}
+                variant="outline"
+                size="lg"
+                className="px-4 py-3 text-sm font-medium hover:bg-red-500 hover:text-white hover:border-red-500 rounded-xl border-primary/20 transition-all duration-200"
+              >
+                ⏹️ Stop Shopping
+              </Button>
+            )}
+
+            {items.length === 0 && (
+              <div className="w-[140px]"></div>
+            )}
+          </div>
+
+          <div className="relative flex justify-center items-center">
+            {/* Centered Add Items button - always in center */}
+            <div className="flex justify-center">
+              <Button
+                onClick={handleStartAddingItems}
+                variant="default"
+                size="lg"
+                className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all font-medium"
+                disabled={mode !== 'idle'}
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Add Items
+              </Button>
+            </div>
+
+            {/* Status Messages - positioned around the button without moving it */}
+            {mode === 'adding' && (
+              <div className="absolute right-0 px-4 py-2 rounded-full text-sm font-semibold shadow-sm bg-blue-100 text-blue-800">
+                🎤 Adding Items
+              </div>
+            )}
+
+            {mode === 'idle' && items.length > 0 && !hasStartedShopping && (
+              <div className="absolute right-0 px-4 py-2 rounded-full text-sm font-semibold shadow-sm bg-green-100 text-green-800">
+                ✅ Ready to Shop
+              </div>
+            )}
+
+            {(mode === 'shopping' || hasStartedShopping) && (
+              <div className="absolute right-0 px-4 py-2 rounded-full text-sm font-semibold shadow-sm bg-orange-100 text-orange-800">
+                🛒 Shopping
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Mode Indicator */}
-        {mode !== 'idle' && (
-          <div className="flex justify-center animate-fade-in">
-            <div className={cn(
-              "px-6 py-3 rounded-full text-base font-semibold shadow-sm animate-bounce-in",
-              mode === 'adding'
-                ? "bg-blue-100 text-blue-800"
-                : "bg-green-100 text-green-800"
-            )}>
-              {mode === 'adding' ? '🎤 Adding Items' : '🛒 Shopping Mode'}
+        {/* Instructions - Only show when toggled */}
+        {showInstructions && (
+          <Card className="p-4 md:p-6 lg:p-8 shadow-card rounded-xl md:rounded-2xl border-0 bg-white/80 backdrop-blur-sm">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-lg md:text-xl font-bold">How to Use Voice Shopping</h2>
+              <Button
+                onClick={() => setShowInstructions(false)}
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive p-1"
+              >
+                ✕
+              </Button>
             </div>
-          </div>
+            <div className="space-y-3 md:space-y-4">
+              <div className="flex items-start gap-2 md:gap-3">
+                <div className="flex-shrink-0 w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
+                  <span className="text-primary font-bold text-sm md:text-lg">1</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-base md:text-lg">Add Items with Voice</h3>
+                  <p className="text-muted-foreground text-xs md:text-sm">Press "Add Items" and speak your grocery list naturally</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 md:gap-3">
+                <div className="flex-shrink-0 w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
+                  <span className="text-primary font-bold text-sm md:text-lg">2</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-base md:text-lg">Natural Speech Patterns</h3>
+                  <p className="text-muted-foreground text-xs md:text-sm">Say "apples and bananas" or "milk, bread, eggs"</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 md:gap-3">
+                <div className="flex-shrink-0 w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
+                  <span className="text-primary font-bold text-sm md:text-lg">3</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-base md:text-lg">Finish Your List</h3>
+                  <p className="text-muted-foreground text-xs md:text-sm">Say "that's it" or "done" when finished adding items</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 md:gap-3">
+                <div className="flex-shrink-0 w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
+                  <span className="text-primary font-bold text-sm md:text-lg">4</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-base md:text-lg">Start Shopping</h3>
+                  <p className="text-muted-foreground text-xs md:text-sm">Press "Start Shopping" to begin voice check-off</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 md:gap-3">
+                <div className="flex-shrink-0 w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
+                  <span className="text-primary font-bold text-sm md:text-lg">5</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-base md:text-lg">Voice Check-off</h3>
+                  <p className="text-muted-foreground text-xs md:text-sm">Say item names while shopping to cross them off</p>
+                </div>
+              </div>
+            </div>
+          </Card>
         )}
 
-        {/* Voice Input Card */}
-        <Card className="p-6 md:p-8 shadow-card rounded-2xl border-0 bg-white/80 backdrop-blur-sm">
-          <div className="space-y-6">
-            {mode === 'idle' && (
-              <div className="text-center space-y-6">
-                <div className="space-y-4">
-                  <VoiceButton
-                    isListening={false}
-                    isRecording={false}
-                    onStartListening={handleStartAddingItems}
-                    onStopListening={() => {}}
-                    className="w-full md:w-auto"
-                    size="lg"
-                  >
-                    <Plus className="w-5 h-5" />
-                    <span className="hidden sm:inline">Add Items</span>
-                    <span className="sm:hidden">Add</span>
-                  </VoiceButton>
-                  
-                  {items.length > 0 && (
-                    <Button
-                      onClick={handleStartShopping}
-                      variant="secondary"
-                      size="lg"
-                      className="w-full font-semibold rounded-xl py-6 text-base hover:scale-105 transition-transform"
-                    >
-                      <ShoppingCart className="w-5 h-5" />
-                      <span className="hidden sm:inline">Start Shopping</span>
-                      <span className="sm:hidden">Shop</span>
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {mode === 'adding' && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="text-center space-y-2">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-voice text-white animate-pulse-voice">
-                    <Mic className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-primary">
-                    Listening for Items
-                  </h3>
-                  <p className="text-muted-foreground">
-                    Say your grocery items separated by "and" or commas
-                  </p>
-                </div>
-                
-                <VoiceButton
-                  isListening={addItemsRecognition.isListening}
-                  isRecording={true}
-                  onStartListening={handleStartAddingItems}
-                  onStopListening={handleStopAddingItems}
-                  className="w-full"
-                  size="lg"
-                >
-                  <Square className="w-5 h-5" />
-                  Stop Adding Items
-                </VoiceButton>
-                
-                {getCurrentTranscript() && (
-                  <div className="p-4 bg-muted/50 rounded-xl border animate-slide-up">
-                    <p className="text-sm text-muted-foreground mb-1">Current speech:</p>
-                    <p className="font-medium text-lg">{getCurrentTranscript()}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {mode === 'shopping' && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="text-center space-y-2">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-success text-white animate-pulse-voice">
-                    <ShoppingCart className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-voice-success">
-                    Shopping Mode Active
-                  </h3>
-                  <p className="text-muted-foreground">
-                    Say item names to check them off your list
-                  </p>
-                </div>
-                
-                <VoiceButton
-                  isListening={shoppingRecognition.isListening}
-                  isRecording={true}
-                  onStartListening={handleStartShopping}
-                  onStopListening={handleStopShopping}
-                  className="w-full"
-                  size="lg"
-                >
-                  <Square className="w-5 h-5" />
-                  Stop Shopping
-                </VoiceButton>
-                
-                {getCurrentTranscript() && (
-                  <div className="p-4 bg-muted/50 rounded-xl border animate-slide-up">
-                    <p className="text-sm text-muted-foreground mb-1">Listening for:</p>
-                    <p className="font-medium text-lg">{getCurrentTranscript()}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-3 pt-4">
-              <Button
-                onClick={saveToListHistory}
-                variant="outline"
-                size="sm"
-                className="flex-1 text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-xl py-5"
-                aria-label="Save current shopping list to history"
-              >
-                <Save className="w-4 h-4" />
-                Save List
-              </Button>
-              <Button
-                onClick={handleClearList}
-                variant="outline"
-                size="sm"
-                className="flex-1 text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-xl py-5"
-                aria-label="Clear current shopping list"
-              >
-                <RotateCcw className="w-4 h-4" />
-                Clear List
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        {/* Shopping List */}
+        {/* Shopping List - Moved to top */}
         <ShoppingList
           items={items}
           onToggleItem={handleToggleItem}
@@ -815,80 +840,37 @@ export const GroceryApp: React.FC = () => {
           className="animate-slide-up"
         />
 
-        {/* Instructions */}
-        <Card className="p-6 md:p-8 shadow-card rounded-2xl border-0 bg-white/80 backdrop-blur-sm">
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="text-primary font-bold text-lg">1</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Add Items with Voice</h3>
-                <p className="text-muted-foreground text-sm">Press "Add Items" and speak your grocery list naturally</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="text-primary font-bold text-lg">2</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Natural Speech Patterns</h3>
-                <p className="text-muted-foreground text-sm">Say "apples and bananas" or "milk, bread, eggs"</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="text-primary font-bold text-lg">3</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Start Shopping</h3>
-                <p className="text-muted-foreground text-sm">Press "Start Shopping" to begin voice check-off</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="text-primary font-bold text-lg">4</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Voice Check-off</h3>
-                <p className="text-muted-foreground text-sm">Say item names while shopping to cross them off</p>
-              </div>
-            </div>
-          </div>
-        </Card>
         
         {/* History Section */}
         {history.length > 0 && (
-          <Card className="p-6 md:p-8 shadow-card rounded-2xl border-0 bg-white/80 backdrop-blur-sm">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold">Saved Lists</h3>
+          <Card className="p-4 md:p-6 lg:p-8 shadow-card rounded-xl md:rounded-2xl border-0 bg-white/80 backdrop-blur-sm">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 md:mb-6">
+              <h3 className="text-lg md:text-xl font-bold">Saved Lists</h3>
               <Button
                 onClick={clearHistory}
                 variant="outline"
                 size="sm"
-                className="text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-xl"
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-xl self-start sm:self-auto"
                 aria-label="Clear all saved shopping lists from history"
               >
-                Clear History
+                <span className="hidden sm:inline">Clear History</span>
+                <span className="sm:hidden">Clear All</span>
               </Button>
             </div>
-            <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+            <div className="space-y-2 md:space-y-3 max-h-48 md:max-h-60 overflow-y-auto pr-1 md:pr-2">
               {history.map((list, index) => (
                 <div
                   key={index}
-                  className="flex justify-between items-center p-4 bg-muted/50 rounded-xl cursor-pointer hover:bg-muted transition-colors duration-300 border"
+                  className="flex justify-between items-center p-3 md:p-4 bg-muted/50 rounded-xl cursor-pointer hover:bg-muted transition-colors duration-300 border"
                   onClick={() => loadFromHistory(index)}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full bg-primary"></div>
-                    <span className="font-medium">
+                  <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+                    <div className="w-2 h-2 md:w-3 md:h-3 rounded-full bg-primary flex-shrink-0"></div>
+                    <span className="font-medium text-sm md:text-base truncate">
                       {list.length} item{list.length !== 1 ? 's' : ''}
                     </span>
                   </div>
-                  <span className="text-sm text-muted-foreground">
+                  <span className="text-xs md:text-sm text-muted-foreground flex-shrink-0 ml-2">
                     {new Date().toLocaleDateString()}
                   </span>
                 </div>
