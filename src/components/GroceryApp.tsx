@@ -706,7 +706,13 @@ export const GroceryApp: React.FC = () => {
                 onClick={handleStartShopping}
                 variant="outline"
                 size="lg"
-                className="px-4 py-3 text-sm font-medium hover:bg-blue-500 hover:text-white hover:border-blue-500 rounded-xl border-primary/20 transition-all duration-200"
+                className={cn(
+                  "px-4 py-3 text-sm font-medium rounded-xl border-primary/20 transition-all duration-200",
+                  // Light green when ready to shop
+                  mode === 'idle' && items.length > 0 && !hasStartedShopping
+                    ? "bg-green-100 text-green-800 border-green-300 hover:bg-green-200 hover:text-green-900"
+                    : "hover:bg-blue-500 hover:text-white hover:border-blue-500"
+                )}
               >
                 🛒 Start Shopping
               </Button>
@@ -717,9 +723,27 @@ export const GroceryApp: React.FC = () => {
                 onClick={handleStopShopping}
                 variant="outline"
                 size="lg"
-                className="px-4 py-3 text-sm font-medium hover:bg-red-500 hover:text-white hover:border-red-500 rounded-xl border-primary/20 transition-all duration-200"
+                className={cn(
+                  "px-4 py-3 text-sm font-medium rounded-xl border-primary/20 transition-all duration-200",
+                  // Dark green when actively shopping
+                  hasStartedShopping
+                    ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                    : "hover:bg-red-500 hover:text-white hover:border-red-500"
+                )}
               >
                 ⏹️ Stop Shopping
+              </Button>
+            )}
+
+            {/* Show completed state when all items are done */}
+            {items.length > 0 && items.every(item => item.completed) && !hasStartedShopping && (
+              <Button
+                variant="outline"
+                size="lg"
+                className="px-4 py-3 text-sm font-medium bg-green-600 text-white border-green-600 rounded-xl transition-all duration-200"
+                disabled
+              >
+                ✅ Shopping Complete!
               </Button>
             )}
 
@@ -743,24 +767,6 @@ export const GroceryApp: React.FC = () => {
               </Button>
             </div>
 
-            {/* Status Messages - positioned around the button without moving it */}
-            {mode === 'adding' && (
-              <div className="absolute right-0 px-4 py-2 rounded-full text-sm font-semibold shadow-sm bg-blue-100 text-blue-800">
-                🎤 Adding Items
-              </div>
-            )}
-
-            {mode === 'idle' && items.length > 0 && !hasStartedShopping && (
-              <div className="absolute right-0 px-4 py-2 rounded-full text-sm font-semibold shadow-sm bg-green-100 text-green-800">
-                ✅ Ready to Shop
-              </div>
-            )}
-
-            {(mode === 'shopping' || hasStartedShopping) && (
-              <div className="absolute right-0 px-4 py-2 rounded-full text-sm font-semibold shadow-sm bg-orange-100 text-orange-800">
-                🛒 Shopping
-              </div>
-            )}
           </div>
         </div>
 
@@ -832,11 +838,13 @@ export const GroceryApp: React.FC = () => {
           </Card>
         )}
 
-        {/* Shopping List - Moved to top */}
+        {/* Shopping List - Moved to top with conditional spacing for mobile messages */}
         <ShoppingList
           items={items}
           onToggleItem={handleToggleItem}
           onRemoveItem={handleRemoveItem}
+          mode={mode}
+          hasStartedShopping={hasStartedShopping}
           className="animate-slide-up"
         />
 

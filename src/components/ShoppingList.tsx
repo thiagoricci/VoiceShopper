@@ -185,6 +185,8 @@ interface ShoppingListProps {
   items: ShoppingItem[];
   onToggleItem: (id: string) => void;
   onRemoveItem: (id: string) => void;
+  mode?: 'adding' | 'shopping' | 'idle';
+  hasStartedShopping?: boolean;
   className?: string;
 }
 
@@ -192,6 +194,8 @@ export const ShoppingList: React.FC<ShoppingListProps> = ({
   items,
   onToggleItem,
   onRemoveItem,
+  mode = 'idle',
+  hasStartedShopping = false,
   className
 }) => {
   if (items.length === 0) {
@@ -241,6 +245,31 @@ export const ShoppingList: React.FC<ShoppingListProps> = ({
 
   return (
     <Card className={cn("p-6 md:p-8 shadow-card rounded-2xl border-0 bg-white/80 backdrop-blur-sm", className)}>
+      {/* Status Messages - integrated into the shopping list card */}
+      {(mode === 'adding' || mode === 'idle' || mode === 'shopping' || hasStartedShopping) && (
+        <div className="mb-6 -mt-2 -mx-2 px-4 py-3 rounded-t-2xl border-b border-primary/10">
+          <div className="flex justify-center">
+            {mode === 'adding' && (
+              <div className="px-4 py-2 rounded-full text-sm font-semibold bg-blue-100 text-blue-800">
+                🎤 Adding Items
+              </div>
+            )}
+
+            {mode === 'idle' && items.length > 0 && !hasStartedShopping && (
+              <div className="px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800">
+                ✅ Ready to Shop
+              </div>
+            )}
+
+            {(mode === 'shopping' || hasStartedShopping) && (
+              <div className="px-4 py-2 rounded-full text-sm font-semibold bg-orange-100 text-orange-800">
+                🛒 Shopping
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-8">
         {sortedCategories.map((category) => (
           <div key={category} className="space-y-3">
