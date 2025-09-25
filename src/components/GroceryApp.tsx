@@ -774,7 +774,7 @@ export const GroceryApp: React.FC = () => {
         {showInstructions && (
           <Card className="p-4 md:p-6 lg:p-8 shadow-card rounded-xl md:rounded-2xl border-0 bg-white/80 backdrop-blur-sm">
             <div className="flex justify-between items-start mb-4">
-              <h2 className="text-lg md:text-xl font-bold">How to Use Voice Shopping</h2>
+              <h2 className="text-lg md:text-xl font-bold">How to use Voice Shopper</h2>
               <Button
                 onClick={() => setShowInstructions(false)}
                 variant="ghost"
