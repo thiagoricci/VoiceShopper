@@ -701,6 +701,26 @@ export const GroceryApp: React.FC = () => {
               Voice Shopper
             </h1>
 
+            {/* Spacer for consistent header layout */}
+            <div className="w-[140px]"></div>
+          </div>
+
+          <div className="flex flex-col items-center space-y-4">
+            {/* Centered Add Items button - always in center */}
+            <div className="flex justify-center">
+              <Button
+                onClick={handleStartAddingItems}
+                variant="default"
+                size="lg"
+                className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all font-medium"
+                disabled={mode !== 'idle'}
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Add Items
+              </Button>
+            </div>
+
+            {/* Start/Stop Shopping button - positioned below Add Items */}
             {items.length > 0 && !hasStartedShopping && (
               <Button
                 onClick={handleStartShopping}
@@ -746,26 +766,6 @@ export const GroceryApp: React.FC = () => {
                 ✅ Shopping Complete!
               </Button>
             )}
-
-            {items.length === 0 && (
-              <div className="w-[140px]"></div>
-            )}
-          </div>
-
-          <div className="relative flex justify-center items-center">
-            {/* Centered Add Items button - always in center */}
-            <div className="flex justify-center">
-              <Button
-                onClick={handleStartAddingItems}
-                variant="default"
-                size="lg"
-                className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all font-medium"
-                disabled={mode !== 'idle'}
-              >
-                <Plus className="w-5 h-5 mr-2" />
-                Add Items
-              </Button>
-            </div>
 
           </div>
         </div>
