@@ -28,7 +28,7 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
     continuous = true,
     interimResults = true,
     lang = 'en-US',
-    timeout = 5000, // Default 5 seconds
+    timeout = 3000, // Default 3 seconds
     onResult,
     onEnd,
     onError,
@@ -64,12 +64,12 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
       // Critical for mobile: restart on audio end to maintain connection
       recognition.addEventListener('audioend', () => {
         isListeningRef.current = false;
-        // Check manuallyStoppedRef to get the current value
-        if (isListening && continuous && !manuallyStoppedRef.current && isListeningRef.current !== false) {
+        // Only restart if NOT manually stopped and still supposed to be listening
+        if (isListening && continuous && !manuallyStoppedRef.current) {
           // Small delay to prevent rapid restarts
           timeoutRef.current = setTimeout(() => {
-            // Double check all conditions before restarting
-            if (isListening && !manuallyStoppedRef.current && isListeningRef.current !== false && recognitionRef.current) {
+            // Triple check all conditions before restarting - ensure manuallyStopped is still false
+            if (isListening && !manuallyStoppedRef.current && recognitionRef.current && !manuallyStoppedRef.current) {
               try {
                 recognitionRef.current.start();
                 isListeningRef.current = true;
@@ -93,7 +93,7 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
           inactivityTimeoutRef.current = setTimeout(() => {
             if (isListening && recognitionRef.current) {
               try {
-                recognitionRef.current.stop();
+                recognitionRef.current.abort();
                 setIsListening(false);
                 isListeningRef.current = false;
               } catch (error) {
@@ -110,7 +110,6 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
           }
           autoStopTimeoutRef.current = setTimeout(() => {
             if (isListening && !manuallyStoppedRef.current && recognitionRef.current) {
-              console.log('Auto-stopping microphone after 3 seconds of inactivity');
               try {
                 recognitionRef.current.stop();
                 setIsListening(false);
@@ -232,8 +231,8 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
     isListeningRef.current = false;
     setManuallyStopped(true);
     manuallyStoppedRef.current = true;
-    
-    // Clear all timeouts
+
+    // Clear all timeouts immediately
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -242,18 +241,49 @@ export const useSpeechRecognition = (options: UseSpeechRecognitionOptions = {}):
       clearTimeout(inactivityTimeoutRef.current);
       inactivityTimeoutRef.current = null;
     }
+    if (autoStopTimeoutRef.current) {
+      clearTimeout(autoStopTimeoutRef.current);
+      autoStopTimeoutRef.current = null;
+    }
 
+    // Force stop the recognition immediately with multiple methods
     try {
-      // Abort the recognition to stop it immediately
+      // Abort is more forceful than stop - try multiple times
+      recognitionRef.current.abort();
+      recognitionRef.current.abort();
       recognitionRef.current.abort();
     } catch (error) {
-      // If abort fails, try stop
+      // If abort fails, try stop multiple times
       try {
+        recognitionRef.current.stop();
+        recognitionRef.current.stop();
         recognitionRef.current.stop();
       } catch (stopError) {
         console.error('Failed to stop speech recognition:', stopError);
       }
     }
+
+    // Additional safety: ensure no restart can happen
+    setTimeout(() => {
+      try {
+        if (recognitionRef.current) {
+          recognitionRef.current.abort();
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }, 50);
+
+    // Final safety check
+    setTimeout(() => {
+      try {
+        if (recognitionRef.current) {
+          recognitionRef.current.abort();
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }, 150);
   }, []);
 
   const resetTranscript = useCallback(() => {

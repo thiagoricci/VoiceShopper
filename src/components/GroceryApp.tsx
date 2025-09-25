@@ -20,6 +20,8 @@ export const GroceryApp: React.FC = () => {
   const [history, setHistory] = useState<ShoppingItem[][]>([]);
   const [showInstructions, setShowInstructions] = useState(false);
   const [hasStartedShopping, setHasStartedShopping] = useState(false);
+  const [isButtonDisabled, setIsButtonDisabled] = useState(false);
+  const [autoStopTimeoutRef, setAutoStopTimeoutRef] = useState<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
   const completionAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -67,11 +69,20 @@ export const GroceryApp: React.FC = () => {
   // Ensure microphones are stopped when mode changes to idle
   useEffect(() => {
     if (mode === 'idle') {
+      // Clear auto-stop timeout
+      if (autoStopTimeoutRef) {
+        clearTimeout(autoStopTimeoutRef);
+        setAutoStopTimeoutRef(null);
+      }
+
       // Stop any active recognition when mode becomes idle
       addItemsRecognition.stopListening();
       shoppingRecognition.stopListening();
+
+      // Additional safety: clear any accumulated transcript when idle
+      setAccumulatedTranscript('');
     }
-  }, [mode]);
+  }, [mode, autoStopTimeoutRef]);
 
   // Ensure microphones are stopped on component mount (page refresh/load)
   useEffect(() => {
@@ -93,16 +104,19 @@ export const GroceryApp: React.FC = () => {
     interimResults: true,
     timeout: 3000, // 3 seconds - balanced timeout for natural speech
     onResult: (transcript, isFinal) => {
-      if (isFinal && transcript.trim()) {
+      if (transcript.trim()) {
         const lowerTranscript = transcript.toLowerCase().trim();
-        const stopPhrases = ["that's it", "done", "list complete", "stop", "finish"];
+        const stopPhrases = ["that's it", "done", "finished", "list complete", "stop", "finish", "that's all", "all done", "i'm done", "complete"];
 
         if (stopPhrases.some(phrase => lowerTranscript.includes(phrase))) {
           handleStopAddingItems();
           return;
         }
-        // Accumulate the transcript instead of processing immediately
-        setAccumulatedTranscript(prev => prev + ' ' + transcript.trim());
+
+         // Accumulate the transcript for processing
+         if (isFinal) {
+           setAccumulatedTranscript(prev => prev + ' ' + transcript.trim());
+         }
       }
     },
     onEnd: () => {
@@ -114,6 +128,14 @@ export const GroceryApp: React.FC = () => {
     },
     onError: (error) => {
       console.error('Speech recognition error:', error);
+
+      // If it's a no-speech error and we're in adding mode, automatically stop
+      if (error === 'no-speech' && mode === 'adding') {
+        console.log('No speech detected, stopping automatically');
+        handleStopAddingItems();
+        return;
+      }
+
       toast({
         title: "Voice Recognition Error",
         description: "Please try again or check microphone permissions.",
@@ -123,17 +145,37 @@ export const GroceryApp: React.FC = () => {
   });
   
   const handleStopAddingItems = () => {
-    // First stop the recognition
+    if (isButtonDisabled) return; // Prevent rapid clicking
+
+    // Clear auto-stop timeout
+    if (autoStopTimeoutRef) {
+      clearTimeout(autoStopTimeoutRef);
+      setAutoStopTimeoutRef(null);
+    }
+
+    // Immediately stop the recognition with multiple fallback methods
     addItemsRecognition.stopListening();
-    
+    setIsButtonDisabled(true); // Disable button during transition
+
+
+    // Force stop multiple times to ensure it actually stops
+    setTimeout(() => addItemsRecognition.stopListening(), 25);
+    setTimeout(() => addItemsRecognition.stopListening(), 50);
+    setTimeout(() => addItemsRecognition.stopListening(), 75);
+    setTimeout(() => addItemsRecognition.stopListening(), 100);
+    setTimeout(() => addItemsRecognition.stopListening(), 150);
+
     // Then update the mode
     setMode('idle');
-    
+
     // Clear any accumulated transcript to prevent further processing
     setAccumulatedTranscript('');
-    
+
     // Also reset the recognition transcript
     addItemsRecognition.resetTranscript();
+
+    // Re-enable button after a short delay
+    setTimeout(() => setIsButtonDisabled(false), 300);
   };
   
 
@@ -564,6 +606,8 @@ export const GroceryApp: React.FC = () => {
   };
 
   const handleStartAddingItems = () => {
+    if (isButtonDisabled) return; // Prevent rapid clicking
+
     if (!addItemsRecognition.isSupported) {
       toast({
         title: "Speech Recognition Not Supported",
@@ -578,11 +622,34 @@ export const GroceryApp: React.FC = () => {
       shoppingRecognition.stopListening();
     }
 
+    // Clear any existing auto-stop timeout
+    if (autoStopTimeoutRef) {
+      clearTimeout(autoStopTimeoutRef);
+      setAutoStopTimeoutRef(null);
+    }
+
     setMode('adding');
+    setIsButtonDisabled(true); // Disable button during transition
     addItemsRecognition.resetTranscript();
+
     // Add a small delay to ensure previous recognition is fully stopped
     setTimeout(() => {
       addItemsRecognition.startListening();
+
+      // Set auto-stop timeout to prevent no-speech errors
+      const timeout = setTimeout(() => {
+        if (mode === 'adding') {
+          console.log('Auto-stopping due to no speech detected');
+          handleStopAddingItems();
+          toast({
+            title: "No Speech Detected",
+            description: "Stopped listening automatically. Click 'Add Items' to try again.",
+          });
+        }
+      }, 3000); // 3 seconds of no speech
+
+      setAutoStopTimeoutRef(timeout);
+      setIsButtonDisabled(false); // Re-enable button after starting
     }, 100);
   };
 
@@ -718,17 +785,29 @@ export const GroceryApp: React.FC = () => {
           </div>
 
           <div className="flex flex-col items-center space-y-4">
+            {/* Microphone status indicator */}
+            {mode === 'adding' && (
+              <div className="flex items-center gap-2 text-sm text-red-600 font-medium animate-pulse">
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                🎤 Listening for items...
+              </div>
+            )}
+
+
+
             {/* Centered Add Items button - toggle between start/stop listening */}
             <div className="flex justify-center">
               <Button
                 onClick={mode === 'adding' ? handleStopAddingItems : handleStartAddingItems}
                 variant="default"
                 size="lg"
+                disabled={isButtonDisabled}
                 className={cn(
                   "px-6 py-3 text-white rounded-full shadow-lg hover:shadow-xl transition-all font-medium",
                   mode === 'adding'
                     ? "bg-red-500 hover:bg-red-600"  // Red when actively listening
-                    : "bg-blue-500 hover:bg-blue-600"  // Blue when ready to start
+                    : "bg-blue-500 hover:bg-blue-600",  // Blue when ready to start
+                  isButtonDisabled && "opacity-50 cursor-not-allowed"
                 )}
               >
                 {mode === 'adding' ? (
@@ -836,7 +915,7 @@ export const GroceryApp: React.FC = () => {
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="font-semibold text-base md:text-lg">Finish Your List</h3>
-                  <p className="text-muted-foreground text-xs md:text-sm">Say "that's it" or "done" when finished adding items</p>
+                  <p className="text-muted-foreground text-xs md:text-sm">Click "Stop Adding" when finished adding items</p>
                 </div>
               </div>
 

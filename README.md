@@ -10,6 +10,7 @@ A revolutionary voice-controlled grocery shopping application that transforms ho
 
 - **Natural Language Processing**: Speak naturally with support for quantities, compound items, and conversational patterns
 - **Advanced Parsing**: Automatically recognizes and separates items using words like "and", "also", "plus", "then"
+- **Fast Response**: Optimized 3-second microphone timeout for quick operation
 - **Mobile Optimized**: Special optimizations for mobile devices with continuous listening and auto-restart capabilities
 
 ### 🛒 **Dual-Mode Operation**
@@ -36,6 +37,7 @@ A revolutionary voice-controlled grocery shopping application that transforms ho
 - **Responsive Design**: Optimized for desktop, tablet, and mobile devices
 - **Beautiful Animations**: Smooth transitions and micro-interactions
 - **Accessibility**: Full keyboard navigation and screen reader support
+- **Clean UI**: Streamlined interface with no unnecessary visual clutter
 
 ## 🚀 Quick Start
 
@@ -114,6 +116,9 @@ Simply say item names to check them off:
 - **Mobile-First** - Responsive design with mobile speech optimizations
 - **Lazy Loading** - Efficient component rendering
 - **Error Handling** - Robust error recovery for speech recognition
+- **Fast Microphone Control** - 3-second timeout for quick microphone stopping
+- **Aggressive Stop Mechanism** - Multiple stop attempts ensure immediate microphone termination
+- **Clean State Management** - Proper cleanup prevents memory leaks and hanging processes
 
 ## 📋 Usage Guide
 
@@ -121,9 +126,10 @@ Simply say item names to check them off:
 
 1. **Grant Permissions**: Allow microphone access when prompted
 2. **Add Items**: Click "Add Items" and speak your grocery list
-3. **Review List**: See your items appear with smart categorization
-4. **Start Shopping**: Click "Start Shopping" for hands-free check-off
-5. **Complete**: Enjoy the celebration when your list is done!
+3. **Stop Adding**: Click "Stop Adding" when finished with your list
+4. **Review List**: See your items appear with smart categorization
+5. **Start Shopping**: Click "Start Shopping" for hands-free check-off
+6. **Complete**: Enjoy the celebration when your list is done!
 
 ### Tips for Best Results
 
@@ -132,6 +138,7 @@ Simply say item names to check them off:
 - **Try different separators** like "and", "also", or commas
 - **Include quantities** naturally: "2 apples", "a dozen eggs"
 - **Use compound words**: "peanut butter", "orange juice"
+- **Click "Stop Adding"** to finish your list (no voice commands needed)
 
 ### Supported Item Types
 
@@ -143,6 +150,13 @@ Simply say item names to check them off:
 - **Beverages**: juices, sodas, water, coffee, tea
 - **Household**: cleaning supplies, paper products
 - **Personal Care**: toiletries, medications
+
+### How to Stop Adding Items
+
+- **Button Control**: Click the "Stop Adding" button to finish your list
+- **Fast Response**: Microphone stops within 3 seconds maximum
+- **Visual Feedback**: Button changes from red to blue when stopped
+- **Clean Operation**: No voice commands needed - just use the button
 
 ## 🤝 Contributing
 
