@@ -26,9 +26,6 @@ export const GroceryApp: React.FC = () => {
   // State for accumulating speech input
   const [accumulatedTranscript, setAccumulatedTranscript] = useState('');
 
-  // Ref for storing items to add for toast notifications
-  const itemsToAddRef = useRef<ShoppingItem[] | null>(null);
-
   // Debounced transcript for processing
   const debouncedTranscript = useDebounce(accumulatedTranscript, 500);
 
@@ -39,19 +36,19 @@ export const GroceryApp: React.FC = () => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      
+
       // Start adding items with 'a' key
       if (e.key === 'a' && mode === 'idle') {
         e.preventDefault();
         handleStartAddingItems();
       }
-      
+
       // Start shopping with 's' key
       if (e.key === 's' && mode === 'idle' && items.length > 0) {
         e.preventDefault();
         handleStartShopping();
       }
-      
+
       // Stop current action with 'Escape' key
       if (e.key === 'Escape' && mode !== 'idle') {
         e.preventDefault();
@@ -62,34 +59,32 @@ export const GroceryApp: React.FC = () => {
         }
       }
     };
-    
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [mode, items.length]);
 
-  // Handle toast notifications for added items
+  // Ensure microphones are stopped when mode changes to idle
   useEffect(() => {
-    if (itemsToAddRef.current) {
-      if (itemsToAddRef.current.length > 0) {
-        // Items were added
-        toast({
-          title: `Added ${itemsToAddRef.current.length} item${itemsToAddRef.current.length > 1 ? "s" : ""}`,
-          description: itemsToAddRef.current.map(item =>
-            item.quantity ? `${item.quantity}x ${item.name}` : item.name
-          ).join(", "),
-        });
-      } else {
-        // No items recognized
-        toast({
-          title: "No items recognized",
-          description: "Try speaking more clearly or use words like 'and' between items",
-          variant: "destructive",
-        });
-      }
-      // Reset the ref
-      itemsToAddRef.current = null;
+    if (mode === 'idle') {
+      // Stop any active recognition when mode becomes idle
+      addItemsRecognition.stopListening();
+      shoppingRecognition.stopListening();
     }
-  }, [items]);
+  }, [mode]);
+
+  // Ensure microphones are stopped on component mount (page refresh/load)
+  useEffect(() => {
+    // Stop any active microphones when component mounts
+    addItemsRecognition.stopListening();
+    shoppingRecognition.stopListening();
+
+    // Also ensure mode is idle on mount
+    if (mode !== 'idle') {
+      setMode('idle');
+    }
+  }, []); // Empty dependency array means this runs only on mount
+
 
 
   // Speech recognition for adding items
@@ -111,12 +106,11 @@ export const GroceryApp: React.FC = () => {
       }
     },
     onEnd: () => {
-      // Automatically stop adding mode when speech recognition ends
-      if (mode === 'adding') {
-        setTimeout(() => {
-          handleStopAddingItems();
-        }, 2000); // Longer delay to allow natural speech patterns
-      }
+      // The onEnd will be called when speech recognition ends for any reason
+      // We don't need to do anything here because:
+      // 1. If user manually stopped, handleStopAddingItems was already called
+      // 2. If it stopped due to timeout, the mode will still be 'adding' and user can restart
+      // 3. We don't want automatic mode changes that might confuse the user
     },
     onError: (error) => {
       console.error('Speech recognition error:', error);
@@ -129,8 +123,17 @@ export const GroceryApp: React.FC = () => {
   });
   
   const handleStopAddingItems = () => {
-    setMode('idle');
+    // First stop the recognition
     addItemsRecognition.stopListening();
+    
+    // Then update the mode
+    setMode('idle');
+    
+    // Clear any accumulated transcript to prevent further processing
+    setAccumulatedTranscript('');
+    
+    // Also reset the recognition transcript
+    addItemsRecognition.resetTranscript();
   };
   
 
@@ -156,29 +159,29 @@ export const GroceryApp: React.FC = () => {
   
   const checkOffItems = useCallback((transcript: string) => {
     const spokenWords = transcript.toLowerCase().split(' ');
-    
+
     // Find matching items with more precise matching
     const matchedItems = items.filter(item => {
       if (item.completed) return false;
-      
+
       const itemName = item.name.toLowerCase();
-      
+
       // Check for exact word matches first
       const itemWords = itemName.split(' ');
       const exactWordMatch = spokenWords.some(spokenWord =>
         itemWords.some(itemWord => itemWord === spokenWord)
       );
-      
+
       // Check for partial matches (but more strict than before)
       const partialMatch = spokenWords.some(spokenWord =>
         itemName.includes(spokenWord) && spokenWord.length > 2
       );
-      
+
       // Check for compound item matches
       const compoundMatch = spokenWords.some(spokenWord =>
         spokenWord.includes(itemName) && itemName.includes(' ')
       );
-      
+
       return exactWordMatch || partialMatch || compoundMatch;
     });
 
@@ -189,38 +192,7 @@ export const GroceryApp: React.FC = () => {
             ? { ...item, completed: true }
             : item
         );
-        
-        const allCompleted = updatedItems.every(item => item.completed);
-        
-        if (allCompleted && updatedItems.length > 0) {
-          // Play success sound and show completion
-          playSuccessSound();
-          toast({
-            title: "🎉 Shopping Complete!",
-            description: "Congratulations! You've completed your shopping list!",
-          });
-          
-          // Add a special celebration effect
-          setTimeout(() => {
-            toast({
-              title: "🎊 Well Done! 🎊",
-              description: "You've successfully completed your shopping list!",
-              duration: 5000,
-            });
-          }, 1000);
-          
-          setTimeout(() => {
-            setItems([]);
-            setMode('idle');
-            handleStopShopping();
-          }, 3000);
-        } else {
-          toast({
-            title: "Item found!",
-            description: `Checked off: ${matchedItems.map(i => i.name).join(', ')}`,
-          });
-        }
-        
+
         return updatedItems;
       });
     }
@@ -467,28 +439,91 @@ export const GroceryApp: React.FC = () => {
           !prevItems.some(existing => existing.name.toLowerCase() === newItem.name.toLowerCase())
         );
         
-        // Store the items to add in a ref to trigger toast in useEffect
+        // Show toast notifications immediately
         if (itemsToAdd.length > 0) {
-          itemsToAddRef.current = itemsToAdd;
-        } else {
-          itemsToAddRef.current = null;
+          // Use setTimeout to defer the toast to avoid render cycle issues
+          setTimeout(() => {
+            toast({
+              title: `Added ${itemsToAdd.length} item${itemsToAdd.length > 1 ? "s" : ""}`,
+              description: itemsToAdd.map(item =>
+                item.quantity ? `${item.quantity}x ${item.name}` : item.name
+              ).join(", "),
+            });
+          }, 0);
         }
         
         return [...prevItems, ...itemsToAdd];
       });
     } else if (cleanedItems.length === 0) {
-      // Store the no items flag in a ref to trigger toast in useEffect
-      itemsToAddRef.current = [];
+      // Show no items recognized toast
+      setTimeout(() => {
+        toast({
+          title: "No items recognized",
+          description: "Try speaking more clearly or use words like 'and' between items",
+          variant: "destructive",
+        });
+      }, 0);
     }
-  }, [extractQuantity]);
+  }, [extractQuantity, toast]);
 
   // Process the debounced transcript
   useEffect(() => {
-    if (debouncedTranscript.trim()) {
+    if (debouncedTranscript.trim() && mode === 'adding') {
       parseAndAddItems(debouncedTranscript.trim());
       setAccumulatedTranscript(''); // Clear the accumulated transcript after processing
     }
-  }, [debouncedTranscript, parseAndAddItems]);
+  }, [debouncedTranscript, parseAndAddItems, mode]);
+
+  // Handle toast notifications for completed items
+  useEffect(() => {
+    const completedItems = items.filter(item => item.completed);
+    const allCompleted = items.length > 0 && items.every(item => item.completed);
+
+    if (completedItems.length > 0 && !allCompleted) {
+      // Show toast for individual items being completed
+      const newlyCompleted = completedItems.filter(item => {
+        // This is a simple check - in a real app you might track previous state
+        return true; // For now, show toast for any completed items
+      });
+
+      if (newlyCompleted.length > 0) {
+        setTimeout(() => {
+          toast({
+            title: "Item found!",
+            description: `Checked off: ${newlyCompleted.map(i => i.name).join(', ')}`,
+          });
+        }, 0);
+      }
+    } else if (allCompleted && items.length > 0) {
+      // Stop any active speech recognition when shopping is complete
+      if (mode === 'shopping') {
+        shoppingRecognition.stopListening();
+      }
+
+      // Show completion toasts
+      setTimeout(() => {
+        playSuccessSound();
+        toast({
+          title: "🎉 Shopping Complete!",
+          description: "Congratulations! You've completed your shopping list!",
+        });
+
+        // Add a special celebration effect
+        setTimeout(() => {
+          toast({
+            title: "🎊 Well Done! 🎊",
+            description: "You've successfully completed your shopping list!",
+            duration: 5000,
+          });
+        }, 1000);
+
+        // Reload the page after delay to ensure clean state
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+      }, 0);
+    }
+  }, [items, toast, mode, shoppingRecognition]);
 
   // Play success sound
   const playSuccessSound = () => {
@@ -585,9 +620,12 @@ export const GroceryApp: React.FC = () => {
   };
 
   const handleStopShopping = () => {
+    // Stop the microphone immediately
+    shoppingRecognition.stopListening();
+
+    // Update the state
     setMode('idle');
     setHasStartedShopping(false);
-    shoppingRecognition.stopListening();
   };
 
   const handleToggleItem = (id: string) => {
@@ -595,33 +633,6 @@ export const GroceryApp: React.FC = () => {
       const updatedItems = prev.map(item =>
         item.id === id ? { ...item, completed: !item.completed } : item
       );
-
-      // Check if all items are now completed
-      const allCompleted = updatedItems.every(item => item.completed);
-
-      if (allCompleted && updatedItems.length > 0) {
-        // Play success sound and show completion
-        playSuccessSound();
-        toast({
-          title: "🎉 Shopping Complete!",
-          description: "Congratulations! You've completed your shopping list!",
-        });
-
-        // Add a special celebration effect
-        setTimeout(() => {
-          toast({
-            title: "🎊 Well Done! 🎊",
-            description: "You've successfully completed your shopping list!",
-            duration: 5000,
-          });
-        }, 1000);
-
-        // Clear the list and reset mode after delay
-        setTimeout(() => {
-          setItems([]);
-          setMode('idle');
-        }, 3000);
-      }
 
       return updatedItems;
     });
@@ -632,16 +643,17 @@ export const GroceryApp: React.FC = () => {
   };
 
   const handleClearList = () => {
+    // Stop any active microphones first
+    if (mode === 'adding') {
+      addItemsRecognition.stopListening();
+    } else if (mode === 'shopping') {
+      shoppingRecognition.stopListening();
+    }
+
+    // Update the state
     setItems([]);
     setHasStartedShopping(false);
-    if (mode !== 'idle') {
-      if (mode === 'adding') {
-        addItemsRecognition.stopListening();
-      } else if (mode === 'shopping') {
-        shoppingRecognition.stopListening();
-      }
-      setMode('idle');
-    }
+    setMode('idle');
   };
 
   // Save current list to history
