@@ -706,17 +706,30 @@ export const GroceryApp: React.FC = () => {
           </div>
 
           <div className="flex flex-col items-center space-y-4">
-            {/* Centered Add Items button - always in center */}
+            {/* Centered Add Items button - toggle between start/stop listening */}
             <div className="flex justify-center">
               <Button
-                onClick={handleStartAddingItems}
+                onClick={mode === 'adding' ? handleStopAddingItems : handleStartAddingItems}
                 variant="default"
                 size="lg"
-                className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all font-medium"
-                disabled={mode !== 'idle'}
+                className={cn(
+                  "px-6 py-3 text-white rounded-full shadow-lg hover:shadow-xl transition-all font-medium",
+                  mode === 'adding'
+                    ? "bg-red-500 hover:bg-red-600"  // Red when actively listening
+                    : "bg-blue-500 hover:bg-blue-600"  // Blue when ready to start
+                )}
               >
-                <Plus className="w-5 h-5 mr-2" />
-                Add Items
+                {mode === 'adding' ? (
+                  <>
+                    <Square className="w-5 h-5 mr-2" />
+                    Stop Adding
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5 mr-2" />
+                    Add Items
+                  </>
+                )}
               </Button>
             </div>
 
