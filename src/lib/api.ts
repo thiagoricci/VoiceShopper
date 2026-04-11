@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { getAuthToken } from './indexedDB'
+import { clearAuthToken, clearUserData, getAuthToken } from './indexedDB'
 
 /**
  * Update cached token for interceptors
@@ -36,6 +36,7 @@ const apiClient = axios.create({
 // Add auth token to requests
 apiClient.interceptors.request.use((config: any) => {
   if (cachedToken) {
+    config.headers = config.headers || {}
     config.headers.Authorization = `Bearer ${cachedToken}`
   }
   return config
@@ -47,13 +48,13 @@ apiClient.interceptors.response.use(
   (error: any) => {
     // Only logout on 401 (invalid token), not on network errors
     if (error.response?.status === 401) {
-      // Clear IndexedDB
-      const { clearAuthToken, clearUserData } = require('./indexedDB');
-      clearAuthToken().catch(console.error);
-      clearUserData().catch(console.error);
-      // Clear cached token
-      cachedToken = null;
-      window.location.href = '/login'
+      void clearAuthToken().catch(console.error)
+      void clearUserData().catch(console.error)
+      cachedToken = null
+
+      if (window.location.pathname !== '/login') {
+        window.location.replace('/login')
+      }
     }
     return Promise.reject(error)
   }

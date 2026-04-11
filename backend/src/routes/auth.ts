@@ -140,6 +140,13 @@ router.get('/me', async (req: any, res: any) => {
       preferences: user.preferences
     })
   } catch (error) {
+    if (
+      error instanceof Error &&
+      ['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(error.name)
+    ) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
     console.error('Error fetching user:', error)
     res.status(500).json({ error: 'Failed to fetch user' })
   }

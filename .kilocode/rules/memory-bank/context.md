@@ -84,6 +84,11 @@ The project has been recently initialized with a comprehensive implementation in
     - `ChatPanel`: Added new function handlers and removed chat confirmations
     - `GroceryApp`: Added new callbacks for tab switching
     - `CookingMode`: Updated to accept `selectedRecipe` prop for direct recipe display
+- **Auth Error Handling Stabilization (2026-04-11)**: Fixed a frontend/backend auth mismatch that caused cascading load failures after session expiry or invalid tokens
+  - Frontend API interceptor now uses ESM imports instead of `require`, preventing browser-side `ReferenceError: require is not defined`
+  - Auth bootstrap now pushes the IndexedDB token into the in-memory API client cache before protected requests run
+  - Backend `GET /api/auth/me` now returns `401` for invalid or expired JWTs instead of incorrectly surfacing them as `500` errors
+  - Result: expired sessions cleanly redirect to `/login` instead of leaving the app in a broken cached-auth state
 
 ## Current Focus
 

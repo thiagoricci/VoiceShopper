@@ -20,6 +20,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       token = await getAuthToken()
       cachedUser = await getUserData()
+      updateCachedToken(token)
 
       // If we have both token and cached user data, use it immediately
       if (token && cachedUser) {
